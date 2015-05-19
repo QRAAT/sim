@@ -1,0 +1,7 @@
+one     -- Noise versus sample size
+angle*  -- Affect of angle on distribution
+dist*   -- Affect of distance on distribution
+grid*   -- Covariance / BootstrapCovariance over for several positions
+contour -- Fine-grained, large scale, no covariance
+asym    -- Covariance in large sample limit
+
