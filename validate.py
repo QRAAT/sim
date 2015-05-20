@@ -1,28 +1,7 @@
 # Testing, testing ... 
-'''
-Observations so far: 
-
-  1. Better to not normalize bearing spectrum. For the woodrat transmitters 
-     (dep_id=61 and whatever is in sample/) it doesn't make a difference, but
-     the distribution looks way better for the beacon when the spectra are not
-     normalized.
-
-  2. Distribution of estimates does indeed depend on geometry. Moreover, referring
-     to the beacon data, the mean is different for different sets of sites, 
-     suggesting the estimates are biased. The distribution appears normal in 
-     some cases, but not in others. Perhaps as a result of interference? 
-
-  3. The covariance is more likely to be positive definite with smaller sample 
-     sizes. This is consistent with what I saw in simulation. t_win=15 is 
-     probably the best tradeoff. 
-
-  4. The results for coverage probability are inconclusive. I used the mean of the 
-     estimates for computing the coverage probability, since the estimates are 
-     biased; however, since the estimates aren't normal, the confidence region 
-     is not likely to behave as advertised. A more controlled experiment with 
-     line-of-sight to all receivers would be a better way to assesss the method. 
-
-'''
+# beacon
+# two   -- exclude=[2,4,5,8]
+# three -- exclude=[2,4,5,8], center = site34. 
 
 from qraat.srv import util, signal, position1
 
@@ -40,7 +19,7 @@ conf_level=0.95
 dep_id = 60
 t_start = 1383098400.514320
 t_end = 1383443999.351099
-fn = 'beacon'
+fn = 'three'
 
 #dep_id = 61
 #t_start = 1396725598.548015
@@ -61,12 +40,12 @@ def process(sv):
     print "chunk", ct; ct+=1
 
     # Signal data
-    sig = signal.Signal(db_con, dep_id, t, t+t_chunk)
+    sig = signal.Signal(db_con, dep_id, t, t+t_chunk, exclude=[2,4,5,8])
     if sig.t_start == float("+inf"):
       continue
 
     # Compute positions
-    positions = position1.WindowedPositionEstimator(dep_id, sites, center, sig, sv, 
+    positions = position1.WindowedPositionEstimator(dep_id, sites, site34, sig, sv, 
                              t_step, t_win, method=signal.Signal.Bartlet)
    
     for pos in positions:
@@ -143,7 +122,8 @@ def plot(pos, p_known, site_ids, fn):
     pp.plot(p_known.imag, p_known.real, color='w', marker='o', ms=7)
     pp.grid()
     pp.title("sites=%s total estimates=%d" % (str(site_ids), len(pos)))
-    pp.savefig("%s%s.png" % (fn, ''.join(map(lambda x: str(x), site_ids))), dpi=120)
+    pp.tight_layout()
+    pp.savefig("%s%s.png" % (fn, ''.join(map(lambda x: str(x), site_ids))), dpi=120, bbox_inches='tight')
     pp.clf()
   
 
@@ -156,11 +136,11 @@ if __name__ == '__main__':
   sites = util.get_sites(db_con)
   (center, zone) = util.get_center(db_con)
   
-  plot_map(site34, sites, 'beacon-map')
+  #plot_map(site34, sites, 'beacon-map')
 
-  #P, C = process(sv)
-  #pickle.dump((P, C), open(fn+'-data', 'w'))
-  (P, C) = pickle.load(open(fn+'-data', 'r'))
+  P, C = process(sv)
+  pickle.dump((P, C), open(fn+'-data', 'w'))
+  #(P, C) = pickle.load(open(fn+'-data', 'r'))
 
   print 't_win=%d' % t_win
   for site_ids in P.keys(): 
