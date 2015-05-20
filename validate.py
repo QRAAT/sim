@@ -106,6 +106,28 @@ def process(sv):
   return (P, C)
 
 
+
+def plot_map(p_known, sites, fn): 
+
+    fig = pp.gcf()
+    ax = fig.add_subplot(111)
+    ax.axis('equal')
+    ax.set_xlabel('easting (m)')
+    ax.set_ylabel('northing (m)')
+
+    offset = 20
+    for (id, p) in sites.iteritems():
+      pp.plot(p.imag, p.real, color='r', marker='o', ms=7)
+      pp.text(p.imag+offset, p.real+offset, id)
+    
+    pp.plot(p_known.imag, p_known.real, color='w', marker='o', ms=7)
+    
+    pp.grid()
+    pp.title("Receivers and transmitter")
+    pp.savefig("%s.png" % (fn), dpi=120)
+    pp.clf()
+  
+
 def plot(pos, p_known, site_ids, fn):
     
     fig = pp.gcf()
@@ -116,12 +138,12 @@ def plot(pos, p_known, site_ids, fn):
 
     X = np.imag(pos)
     Y = np.real(pos)
-    pp.scatter(X, Y, alpha=0.2, facecolors='b', edgecolors='none', s=5)
-
-    pp.plot(p_known.imag, p_known.real, color='w', marker='o', ms=3)
     
-    pp.title("%s" % str(site_ids))
-    pp.savefig("%s%s.png" % (fn, ''.join(map(lambda x: str(x), site_ids))))
+    pp.scatter(X, Y, alpha=0.3, facecolors='b', edgecolors='none', s=25, zorder=11)
+    pp.plot(p_known.imag, p_known.real, color='w', marker='o', ms=7)
+    pp.grid()
+    pp.title("sites=%s total estimates=%d" % (str(site_ids), len(pos)))
+    pp.savefig("%s%s.png" % (fn, ''.join(map(lambda x: str(x), site_ids))), dpi=120)
     pp.clf()
   
 
@@ -134,9 +156,11 @@ if __name__ == '__main__':
   sites = util.get_sites(db_con)
   (center, zone) = util.get_center(db_con)
   
-  P, C = process(sv)
-  pickle.dump((P, C), open(fn+'-data', 'w'))
-  #(P, C) = pickle.load(open(fn+'-data', 'r'))
+  plot_map(site34, sites, 'beacon-map')
+
+  #P, C = process(sv)
+  #pickle.dump((P, C), open(fn+'-data', 'w'))
+  (P, C) = pickle.load(open(fn+'-data', 'r'))
 
   print 't_win=%d' % t_win
   for site_ids in P.keys(): 
