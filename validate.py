@@ -3,6 +3,8 @@
 # beacon-2458.dat -- Exclude sites 2, 4, 5, and 8.  
 # beacon-2458n.dat -- Exclude sites 2, 4, 5, and 8, normalized 
 
+# Test [3,6] and [2,6]
+
 from qraat.srv import util, signal, position1
 
 import scipy.stats
@@ -11,34 +13,21 @@ import matplotlib.pyplot as pp
 import pickle
 
 suffix = 'dat'
+conf_level=0.95
 
 position1.NORMALIZE_SPECTRUM=False
 
-cal_id = 3
-t_step = 15
-t_win = 15
-t_chunk = 3600 / 4 
-conf_level=0.95
 
-dep_id = 60
-t_start = 1383098400.514320
-t_end = 1383443999.351099
-#fn = 'beacon'
-#fn = 'beacon-58'
-fn = 'beacon-2458'
-#fn = 'beacon-2458n'
+def process(sv, sites, center, params):
 
-
-#dep_id = 61
-#t_start = 1396725598.548015
-#t_end = 1396732325.777558
-#fn = 'walking'
-
-# Location of site34. 
-site34 = np.complex(4260910.87, 574296.45)
-
-
-def process(sv):  
+  dep_id = params['dep_id']
+  t_start = params['t_start']
+  t_end = params['t_end']
+  t_step = params['t_step']
+  t_win = params['t_win']
+  t_chunk = params['t_chunk']
+  include = params['include']
+  exclude = params['exclude']
 
   ct = 1; good = 0; total = 0
   P = {} # site_id's --> position estimate
@@ -48,7 +37,7 @@ def process(sv):
     print "chunk", ct; ct+=1
 
     # Signal data
-    sig = signal.Signal(db_con, dep_id, t, t+t_chunk, exclude=[2,4,5,8])
+    sig = signal.Signal(db_con, dep_id, t, t+t_chunk, include=include, exclude=exclude)
     if sig.t_start == float("+inf"):
       continue
 
@@ -64,14 +53,11 @@ def process(sv):
         P[site_ids] = []
         C[site_ids] = []
       
-      #pos.plot('fella', sites, center, p_known=site34)
-      #assert False
-
       P[site_ids].append(pos.p)
       
       if pos.p is not None:
         try: 
-          cov = position1.BootstrapCovariance(pos, sites, max_resamples=500)
+          cov = position1.BootstrapCovariance(pos, sites, max_resamples=200)
           E = cov.conf(conf_level)
           C[site_ids].append((E.angle, E.axes[0], E.axes[1]))
           print "Ok"
@@ -182,17 +168,38 @@ def coverage(P, C, p_known=None):
 
 if __name__ == '__main__':  
   db_con = util.get_db('reader')
+
+  cal_id = 3
+  site34 = np.complex(4260910.87, 574296.45)
   
-  # System params 
   sv = signal.SteeringVectors(db_con, cal_id)
   sites = util.get_sites(db_con)
   (center, zone) = util.get_center(db_con)
   
+  # Becaon parameters
+  params = { 't_step' : 120, 
+             't_win' : 15, 
+             't_chunk' : 3600 / 4,
+             'dep_id' : 60,
+             't_start' : 1383098400.51432,
+             't_end' : 1383443999.351099,
+             'include' : [],
+             'exclude' : [] } 
+  
+  # Mary-Brook-walk-around params
+  #dep_id = 61
+  #t_start = 1396725598.548015
+  #t_end = 1396732325.777558
+  
+  fn = 'beacon' + ''.join(map(lambda id: str(id), params['include']))
+
+  print fn
+ 
   #plot_map(site34, sites, 'beacon-map')
 
-  #P, C = process(sv)
-  #pickle.dump((P, C), open(fn+'.'+suffix, 'w'))
-  (P, C) = pickle.load(open(fn+'.'+suffix, 'r'))
+  P, C = process(sv, sites, center, params)
+  pickle.dump((P, C), open(fn+'.'+suffix, 'w'))
+  #(P, C) = pickle.load(open(fn+'.'+suffix, 'r'))
 
   plot(P, fn, site34)
 
