@@ -967,7 +967,7 @@ def contour_test(prefix, center, sites, sv, conf_level):
   # Spawn a process for each noise level. 
   proc = []
   for sig_n in [0.001, 0.01, 0.1]:
-    proc.append( Process(target=_contour_test, args=(exp_params, sys_params, sv, sig_n)) )
+    proc.append( Process(target=_contour_test, args=(prefix, exp_params, sys_params, sv, sig_n)) )
     proc[-1].start()
 
   # Wait for them to finish. 
@@ -981,7 +981,7 @@ def contour_test(prefix, center, sites, sv, conf_level):
   plot_contour('contour.png', exp_params, sys_params, 
        exp_params['pulse_ct'][0], exp_params['sig_n'][0], pos, conf_level)
 
-def _contour_test(exp_params, sys_params, sv, sig_n):
+def _contour_test(prefix, exp_params, sys_params, sv, sig_n):
   exp_params['sig_n'] = [sig_n]
   (pos, cov) = montecarlo(exp_params, sys_params, sv, 
       max_dist=1000, compute_cov=False, scale_tx_pwr=False)
@@ -1174,7 +1174,7 @@ if __name__ == '__main__':
   sites = util.get_sites(db_con)
   (center, zone) = util.get_center(db_con)
 
-  conf_test('exp/test', center, sites, sv, 0.95)
+  #conf_test('exp/test', center, sites, sv, 0.95)
 
   #### ONE ###################################################################
   #one_test(db_con, 'exp/one', 0.95)
@@ -1192,7 +1192,7 @@ if __name__ == '__main__':
   #grid_test('exp/grid', center, sites, sv, 0.95)
 
   #### CONTOUR ################################################################
-  #contour_test('exp/contour', center, sites, sv, 0.95)
+  contour_test('exp/contour', center, sites, sv, 0.95)
   
   #### ASYMPTOTIC-CONF#########################################################
   #asym_test('exp/asym', center, sites, sv, 0.95)

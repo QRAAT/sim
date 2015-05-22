@@ -1,9 +1,6 @@
-# beacon.dat -- Position and covariance estimates of all available beacon data
-# beacon-58.dat -- Exclude sites 5 and 8.
-# beacon-2458.dat -- Exclude sites 2, 4, 5, and 8.  
-# beacon-2458n.dat -- Exclude sites 2, 4, 5, and 8, normalized 
-
-# Test [3,6] and [2,6]
+# beacon.dat -- Estimates of beacon data from all available sites. 
+# beacon36.dat -- include=[3,6]
+# beacon26.dat -- include=[2,6]
 
 from qraat.srv import util, signal, position1
 
@@ -115,7 +112,7 @@ def plot(P, fn, p_known=None):
       pp.scatter(np.imag(pos), np.real(pos), alpha=0.3, facecolors='b', edgecolors='none', s=25)#, zorder=11)
       pp.plot(p_known.imag, p_known.real, color='w', marker='o', ms=7)
       pp.grid()
-      pp.title("sites=%s total estimates=%d" % (str(site_ids), len(P)))
+      pp.title("sites=%s total estimates=%d" % (str(site_ids), len(pos)))
       pp.tight_layout()
       pp.savefig("%s-%s.png" % (fn, ''.join(map(lambda x: str(x), site_ids))), dpi=120, bbox_inches='tight')
       pp.clf()
@@ -183,7 +180,7 @@ if __name__ == '__main__':
              'dep_id' : 60,
              't_start' : 1383098400.51432,
              't_end' : 1383443999.351099,
-             'include' : [],
+             'include' : [1,3,6],
              'exclude' : [] } 
   
   # Mary-Brook-walk-around params
@@ -208,7 +205,7 @@ if __name__ == '__main__':
     print site_ids, '-->', ct
 
   print "\nCorrelation" # of distance to true position and ellipse area
-  for (site_ids, r) in correlation(P, C, site34).iteritems():
+  for (site_ids, r) in correlation(P, C).iteritems():
     print site_ids, '--> %0.4f, p-val=%0.4f' % r
 
   print "\nCvg. probability" 
