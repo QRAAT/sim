@@ -21,10 +21,10 @@ conf_level=0.95
 dep_id = 60
 t_start = 1383098400.514320
 t_end = 1383443999.351099
-fn = 'beacon.'
-#fn = 'beacon-58.'
-#fn = 'beacon-2458.'
-#fn = 'beacon-2458n.'
+#fn = 'beacon'
+#fn = 'beacon-58'
+fn = 'beacon-2458'
+#fn = 'beacon-2458n'
 
 
 #dep_id = 61
@@ -109,81 +109,35 @@ def plot_map(p_known, sites, fn):
   pp.clf()
   
 
-def plot(P, p_known, site_ids, fn):
-  fig = pp.gcf()
-  ax = fig.add_subplot(111)
-  ax.axis('equal')
-  ax.set_xlabel('easting (m)')
-  ax.set_ylabel('northing (m)')
-  X = np.imag(P)
-  Y = np.real(P)
-  pp.scatter(X, Y, alpha=0.3, facecolors='b', edgecolors='none', s=25)#, zorder=11)
-  pp.plot(p_known.imag, p_known.real, color='w', marker='o', ms=7)
-  pp.grid()
-  pp.title("sites=%s total estimates=%d" % (str(site_ids), len(P)))
-  pp.tight_layout()
-  pp.savefig("%s%s.png" % (fn, ''.join(map(lambda x: str(x), site_ids))), dpi=120, bbox_inches='tight')
-  pp.clf()
-
-
-def plot_corr(val, dist, site_ids, fn):
-  fig = pp.gcf()
-  ax = fig.add_subplot(111)
-  ax.set_yscale('log')
-  pp.plot(range(len(val)), val, label='val')
-  pp.plot(range(len(val)), dist, label='dist')
-  pp.legend()
-  pp.savefig("%s%s.png" % (fn, ''.join(map(lambda x: str(x), site_ids))), dpi=120, bbox_inches='tight')
-  pp.clf()
-  
-
-
-def fella(P, c):
-
-  print 't_win=%d' % t_win
-  for site_ids in P.keys(): 
-
-    print '----------------------------------------'
-
-    if len(site_ids) < 2: 
-      print "skpping", site_ids
-      continue
-    
-    print site_ids
-    pos = np.array(P[site_ids])
-    pos = pos[np.abs(pos - site34) < 100]
-    p_mean = np.complex(0,0)
-    total = good = 0
-    for p in pos: 
-      total += 1
-      if p is not None:
-        p_mean += p
-        good += 1
-    if good > 0: 
-      p_mean /= good 
-      print 'mean: (%0.3f, %0.3f)' % (p_mean.imag, p_mean.real)
-
-    total = good = 0
-    area = 0
-    for i in range(len(P[site_ids])):
-      if P[site_ids][i] is not None and C[site_ids][i] is not None:
-        total += 1
-        angle, axis0, axis1 = C[site_ids][i]
-        E = position1.Ellipse(P[site_ids][i], angle, [axis0, axis1])
-        if site34 in E: 
-          good += 1
-        area += E.area()
-
-    if total > 0:
-      print 'area: %0.3f' % (area / total)
-      print "coverage: %d out of %d (%0.3f)" % (good, total, float(good)/total)
-  
-    plot(pos, site34, site_ids, fn)
-
 def mean(P, site_ids): 
   pos = np.array(P[site_ids])
   pos = pos[~np.isnan(pos)]
   return np.mean(pos)
+
+def plot(P, fn, p_known=None):
+  for site_ids in P.keys():
+    if len(site_ids) > 1:
+      pos = np.array(filter(lambda p: p!=None, P[site_ids]))
+      pos = pos[np.abs(pos - site34) < 100]
+      fig = pp.gcf()
+      ax = fig.add_subplot(111)
+      ax.axis('equal')
+      ax.set_xlabel('easting (m)')
+      ax.set_ylabel('northing (m)')
+      pp.scatter(np.imag(pos), np.real(pos), alpha=0.3, facecolors='b', edgecolors='none', s=25)#, zorder=11)
+      pp.plot(p_known.imag, p_known.real, color='w', marker='o', ms=7)
+      pp.grid()
+      pp.title("sites=%s total estimates=%d" % (str(site_ids), len(P)))
+      pp.tight_layout()
+      pp.savefig("%s-%s.png" % (fn, ''.join(map(lambda x: str(x), site_ids))), dpi=120, bbox_inches='tight')
+      pp.clf()
+
+def count(C): 
+  res = {}
+  for site_ids in C.keys():
+    if len(site_ids) > 1:
+      res[site_ids] = len(filter(lambda ell: ell!=None, C[site_ids]))
+  return res
 
 def correlation(P, C, p_known=None): 
   res = {}
@@ -200,7 +154,6 @@ def correlation(P, C, p_known=None):
             dist.append(np.abs(P[site_ids][i] - p_mean))
           else:
             dist.append(np.abs(P[site_ids][i] - p_known))
-      #plot_corr(val, dist, site_ids, 'corr')
       # First value is the correlation, the second is the p-value 
       # (probability of data asuuming they are uncorrelated)
       res[site_ids] = scipy.stats.stats.pearsonr(val, dist)
@@ -236,10 +189,16 @@ if __name__ == '__main__':
   #plot_map(site34, sites, 'beacon-map')
 
   #P, C = process(sv)
-  #pickle.dump((P, C), open(fn+suffix, 'w'))
-  (P, C) = pickle.load(open(fn+suffix, 'r'))
+  #pickle.dump((P, C), open(fn+'.'+suffix, 'w'))
+  (P, C) = pickle.load(open(fn+'.'+suffix, 'r'))
 
-  print "Correlation" # of distance to true position and ellipse area
+  plot(P, fn, site34)
+
+  print "Count"
+  for (site_ids, ct) in count(C).iteritems():
+    print site_ids, '-->', ct
+
+  print "\nCorrelation" # of distance to true position and ellipse area
   for (site_ids, r) in correlation(P, C, site34).iteritems():
     print site_ids, '--> %0.4f, p-val=%0.4f' % r
 
