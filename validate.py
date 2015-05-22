@@ -54,7 +54,7 @@ def process(sv, sites, center, params):
       
       if pos.p is not None:
         try: 
-          cov = position1.BootstrapCovariance(pos, sites, max_resamples=200)
+          cov = position1.BootstrapCovariance(pos, sites, max_resamples=500)
           E = cov.conf(conf_level)
           C[site_ids].append((E.angle, E.axes[0], E.axes[1]))
           print "Ok"
@@ -103,7 +103,7 @@ def plot(P, fn, p_known=None):
   for site_ids in P.keys():
     if len(site_ids) > 1:
       pos = np.array(filter(lambda p: p!=None, P[site_ids]))
-      #pos = pos[np.abs(pos - p_known) < 100]
+      pos = pos[np.abs(pos - p_known) < 100]
       fig = pp.gcf()
       ax = fig.add_subplot(111)
       ax.axis('equal')
@@ -131,7 +131,7 @@ def correlation(P, C, p_known=None):
     if len(site_ids) > 1: 
       p_mean = mean(P, site_ids)
       for i in range(len(P[site_ids])): 
-        if C[site_ids][i] is not None: 
+        if C[site_ids][i] is not None and C[site_ids][i][1] > 0 and C[site_ids][i][2]> 0: 
           angle, axis0, axis1 = C[site_ids][i]
           E = position1.Ellipse(P[site_ids][i], angle, [axis0, axis1])
           val.append(E.area())
@@ -151,7 +151,7 @@ def coverage(P, C, p_known=None):
     if len(site_ids) > 1: 
       p_mean = mean(P, site_ids)
       for i in range(len(P[site_ids])): 
-        if C[site_ids][i] is not None: 
+        if C[site_ids][i] is not None and C[site_ids][i][1] > 0 and C[site_ids][i][2]> 0: 
           angle, axis0, axis1 = C[site_ids][i]
           E = position1.Ellipse(P[site_ids][i], angle, [axis0, axis1])
           if p_known is None:
@@ -174,7 +174,7 @@ if __name__ == '__main__':
   (center, zone) = util.get_center(db_con)
   
   # Becaon parameters
-  params = { 't_step' : 120, 
+  params = { 't_step' : 15, 
              't_win' : 15, 
              't_chunk' : 3600 / 4,
              'dep_id' : 60,
@@ -187,13 +187,14 @@ if __name__ == '__main__':
   #dep_id = 61
   #t_start = 1396725598.548015
   #t_end = 1396732325.777558
-  
-  fn = 'beacon' + ''.join(map(lambda id: str(id), params['include']))
+
+  prefix = 'beacon500r'
+  fn = prefix + ''.join(map(lambda id: str(id), params['include']))
 
   print fn
  
   #plot_map(site34, sites, 'beacon-map')
-
+  
   P, C = process(sv, sites, center, params)
   pickle.dump((P, C), open(fn+'.'+suffix, 'w'))
   #(P, C) = pickle.load(open(fn+'.'+suffix, 'r'))
@@ -205,7 +206,7 @@ if __name__ == '__main__':
     print site_ids, '-->', ct
 
   print "\nCorrelation" # of distance to true position and ellipse area
-  for (site_ids, r) in correlation(P, C).iteritems():
+  for (site_ids, r) in correlation(P, C, site34).iteritems():
     print site_ids, '--> %0.4f, p-val=%0.4f' % r
 
   print "\nCvg. probability" 
