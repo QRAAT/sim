@@ -11,7 +11,9 @@ import matplotlib.pyplot as pp
 import pickle
 
 suffix = 'dat'
-position1.NORMALIZE_SPECTRUM=True
+
+position1.NORMALIZE_SPECTRUM=False
+
 cal_id = 3
 t_step = 15
 t_win = 15
@@ -118,7 +120,7 @@ def plot(P, fn, p_known=None):
   for site_ids in P.keys():
     if len(site_ids) > 1:
       pos = np.array(filter(lambda p: p!=None, P[site_ids]))
-      pos = pos[np.abs(pos - site34) < 100]
+      #pos = pos[np.abs(pos - p_known) < 100]
       fig = pp.gcf()
       ax = fig.add_subplot(111)
       ax.axis('equal')
