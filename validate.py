@@ -59,7 +59,7 @@ def process(sv, sites, center, params):
           C[site_ids].append((E.angle, E.axes[0], E.axes[1]))
           print "Ok"
           good += 1
-        except np.linalg.linalg.LinAlgError: 
+        except position1.SingularError:
           C[site_ids].append(None)
           print "non positive indefinite"
         except position1.PosDefError: 
@@ -103,7 +103,7 @@ def plot(P, fn, p_known=None):
   for site_ids in P.keys():
     if len(site_ids) > 1:
       pos = np.array(filter(lambda p: p!=None, P[site_ids]))
-      pos = pos[np.abs(pos - p_known) < 100]
+      #pos = pos[np.abs(pos - p_known) < 200]
       fig = pp.gcf()
       ax = fig.add_subplot(111)
       ax.axis('equal')
@@ -174,13 +174,13 @@ if __name__ == '__main__':
   (center, zone) = util.get_center(db_con)
   
   # Becaon parameters
-  params = { 't_step' : 15, 
+  params = { 't_step' : 120, 
              't_win' : 15, 
              't_chunk' : 3600 / 4,
              'dep_id' : 60,
              't_start' : 1383098400.51432,
              't_end' : 1383443999.351099,
-             'include' : [1,3,6],
+             'include' : [],
              'exclude' : [] } 
   
   # Mary-Brook-walk-around params
@@ -188,16 +188,16 @@ if __name__ == '__main__':
   #t_start = 1396725598.548015
   #t_end = 1396732325.777558
 
-  prefix = 'beacon500r'
+  prefix = 'beacon'
   fn = prefix + ''.join(map(lambda id: str(id), params['include']))
 
   print fn
  
   #plot_map(site34, sites, 'beacon-map')
   
-  P, C = process(sv, sites, center, params)
-  pickle.dump((P, C), open(fn+'.'+suffix, 'w'))
-  #(P, C) = pickle.load(open(fn+'.'+suffix, 'r'))
+  #P, C = process(sv, sites, center, params)
+  #pickle.dump((P, C), open(fn+'.'+suffix, 'w'))
+  (P, C) = pickle.load(open(fn+'.'+suffix, 'r'))
 
   plot(P, fn, site34)
 
