@@ -1,3 +1,7 @@
+26 May 2015: In order to process the simulation runs produced before this date, 
+checkout commit 9fab2d31c4038a3598ced237d1688cb84a34f384 in the qraat server code
+base. Revisions to the ``class BootstrapCovariance`` are not backwards compatible. 
+
 one     -- Noise versus sample size
 angle*  -- Affect of angle on distribution
 dist*   -- Affect of distance on distribution

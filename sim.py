@@ -88,16 +88,21 @@ def montecarlo(exp_params, sys_params, sv, nearest=None, max_dist=None, compute_
     for j, sig_n in enumerate(exp_params['sig_n']): 
       print '  sig_n=%f' % sig_n
       for e in range(s): #easting 
-        print e, '|',
+        print 'row', e
         for n in range(s): #northing
           P = exp_params['center']  + np.complex((n - exp_params['half_span']) * exp_params['scale'], 
                                                  (e - exp_params['half_span']) * exp_params['scale'])
-          if nearest is not None and max_dist is not None: 
-            raise Exception("Use either `nearest` or `max_dist`, not both.")
-          elif nearest is not None:
+          if nearest is not None:
             include = nearest_sites(P, sites, nearest)
           elif max_dist is not None:
             include = sites_within_dist(P, sites, max_dist)
+            if include == []: # No sites can see the transmitter!
+              for k in range(exp_params['trials']): 
+                pos[i,j,e,n,k] = None
+                if compute_cov: 
+                  cov_asym[i][j][e][n].append(None)
+                  cov_boot[i][j][e][n].append(None)
+              continue
           else: 
             include = sys_params['include']
 
@@ -121,8 +126,6 @@ def montecarlo(exp_params, sys_params, sv, nearest=None, max_dist=None, compute_
               except np.linalg.linalg.LinAlgError:
                 print "Singular matrix!"
                 cov_boot[i][j][e][n].append(None)
-          print n,
-        print
   return (pos, (cov_asym, cov_boot))
 
 
@@ -303,6 +306,7 @@ def generate_report(pos, cov, exp_params, sys_params, conf_level, offset=True):
           'rmse' : np.zeros(pos.shape[:-1], dtype=np.float),
           'area' : np.zeros(pos.shape[:-1], dtype=np.float),
           'ecc' : np.zeros(pos.shape[:-1], dtype=np.float),
+          'recc' : np.zeros(pos.shape[:-1], dtype=np.float),
           'avg_area' : np.zeros(pos.shape[:-1], dtype=np.float),
           'avg_ecc' : np.zeros(pos.shape[:-1], dtype=np.float),
           'area_ratio' : np.zeros(pos.shape[:-1], dtype=np.float) }
@@ -332,10 +336,17 @@ def generate_report(pos, cov, exp_params, sys_params, conf_level, offset=True):
             E = position1.Ellipse(p, angle, axes)
             res['area'][i,j,e,n] = E.area()
             res['ecc'][i,j,e,n] = E.eccentricity()
+            res['recc'][i,j,e,n] = E.axes[1] / E.axes[0]
           except position1.PosDefError:
             E = None
             res['area'][i,j,e,n] = None
             res['ecc'][i,j,e,n] = None
+            res['recc'][i,j,e,n] = None
+          except np.linalg.linalg.LinAlgError: 
+            E = None
+            res['area'][i,j,e,n] = None
+            res['ecc'][i,j,e,n] = None
+            res['recc'][i,j,e,n] = None
 
           if cov is not None:
             a = b = ct = 0
@@ -402,38 +413,6 @@ def display_report(res, exp_params, sys_params, compute_cov=True, offset=True):
               print fmt(res['avg_area'][i,j,e,n] / res['area'][i,j,e,n])
           else: 
             print fmt(res['area'][i,j,e,n])
-
-
-def plot_hist(pos, conf, exp_params, sys_params, conf_level): # TODO out-of-date
-  num_sites = len(sys_params['include'])
-  s = 2 * exp_params['half_span'] + 1
-  for i, pulse_ct in enumerate(exp_params['pulse_ct']): 
-    print 'pulse_ct=%d' % pulse_ct
-    for j, sig_n in enumerate(exp_params['sig_n']): 
-      print '  sig_n=%f' % sig_n
-      for e in range(s): #easting 
-        for n in range(s): #northing
-          fig = pp.gcf()
-          
-          p = exp_params['center']  + np.complex((n - exp_params['half_span']) * exp_params['scale'], 
-                                                 (e - exp_params['half_span']) * exp_params['scale'])
-          p_hat = pos[i,j,e,n,:]
-          
-          area = []; dist = []
-          for k in range(exp_params['trials']):
-            axes = np.array([conf[i,j,e,n,k,0], conf[i,j,e,n,k,1]])
-            angle = conf[i,j,e,n,k,2]
-            E_hat = position1.Ellipse(p_hat[k], angle, axes)
-            dist.append(np.abs(p - p_hat[k]))
-            area.append(E_hat.area()) 
-     
-          print "Correlation: (%0.4f, %0.4f)" % scipy.stats.stats.pearsonr(area, dist)
-
-          n, bins, patches = pp.hist(area, 50, normed=1, facecolor='green', alpha=0.75)
-          pp.title('$\sigma_n^2$=%0.4f, sample_ct=%d' % (sig_n, pulse_ct))
-          pp.show()
-          pp.clf()
-
 
 
 ### PLOTTING ##################################################################
@@ -520,82 +499,6 @@ def plot_distribution(fn, exp_params, sys_params, pulse_ct, sig_n, pos, alpha=0.
   pp.clf()
 
 
-
-def plot_contour(fn, exp_params, sys_params, pulse_ct, sig_n, pos, conf_level):
-  i = exp_params['pulse_ct'].index(pulse_ct)
-  j = exp_params['sig_n'].index(sig_n)
-  Qt = scipy.stats.chi2.ppf(conf_level, 2)
-  
-  fig = pp.gcf()
-  fig.set_size_inches(12,10)
-  ax = fig.add_subplot(111)
-  ax.axis('equal')
-  ax.set_xlabel('easting (m)')
-  ax.set_ylabel('northing (m)')
-
-  s = 2 * exp_params['half_span'] + 1
-
-
-  # Plot positions.
-  angle = np.zeros((s,s), dtype=float)
-  eccentricity = np.zeros((s,s), dtype=float)
-  area = np.zeros((s,s), dtype=float)
-  for e in range(s): #easting 
-    for n in range(s): #northing
-      p = exp_params['center']  + np.complex((n - exp_params['half_span']) * exp_params['scale'], 
-                                             (e - exp_params['half_span']) * exp_params['scale'])
-      p_hat = pos[i,j,e,n,:]
-      C = np.cov(np.imag(p_hat), np.real(p_hat))
-      E = position1.Ellipse(p, *position1.compute_conf(C, Qt))
-      angle[e,n] = E.angle
-      eccentricity[e,n] = E.axes[1] / E.axes[0]
-      area[e,n] = E.area()
-
-
-  c_norm  = colors.Normalize(vmin=np.min(eccentricity), vmax=np.max(eccentricity))
-  scalar_map = cmx.ScalarMappable(norm=c_norm,cmap='YlGnBu')
- 
-  # Eccentricity
-  for e in range(s):
-    for n in range(s):
-      p = exp_params['center']  + np.complex((n - exp_params['half_span']) * exp_params['scale'], 
-                                             (e - exp_params['half_span']) * exp_params['scale'])
-      b = scalar_map.to_rgba(eccentricity[e,n])
-      pp.scatter(p.imag, p.real, marker='s', color=b, edgecolors='none', s=50, alpha=0.8) 
-
-  # Area, orientation
-  area = area / np.max(area)
-  weight = 0.5
-  lweight = 50
-  for e in range(s): #easting 
-    for n in range(s): #northing
-      p = exp_params['center']  + np.complex((n - exp_params['half_span']) * exp_params['scale'], 
-                                             (e - exp_params['half_span']) * exp_params['scale'])
-      a = area[e,n]
-      dx = np.cos(angle[e,n]) * a * lweight
-      dy = np.sin(angle[e,n]) * a * lweight
-      pp.plot([p.imag - dx/2, p.imag + dx/2], 
-              [p.real - dy/2, p.real + dy/2],
-              lw=weight, color='k') 
-  
-  # Plot sites
-  (site_ids, P) = zip(*sys_params['sites'].iteritems())
-  X = np.imag(P)
-  Y = np.real(P)
-  pp.xlim([np.min(X) - 100, np.max(X) + 100])
-  pp.ylim([np.min(Y) - 100, np.max(Y) + 100])
-  
-  offset = 20
-  for (id, (x,y)) in zip(site_ids, zip(X,Y)): 
-    pp.text(x+offset, y+offset, id)
-  pp.scatter(X, Y, label='sites', facecolors='r')
-
-  #X = np.imag(pos.flat)
-  #Y = np.real(pos.flat)
-  #pp.scatter(X, Y, label='estimates', alpha=0.1, facecolors='b', edgecolors='none', s=5)
-
-  pp.savefig(fn, dpi=600)
-  pp.clf()
 
 
 
@@ -949,6 +852,114 @@ def grid_test(prefix, center, sites, sv, conf_level):
 # grid_test()
 
 
+
+def plot_contour(fn, exp_params, sys_params, pulse_ct, sig_n, pos, conf_level):
+  i = exp_params['pulse_ct'].index(pulse_ct)
+  j = exp_params['sig_n'].index(sig_n)
+  Qt = scipy.stats.chi2.ppf(conf_level, 2)
+  
+
+
+  # Plot positions.
+  angle = np.zeros((s,s), dtype=float)
+  eccentricity = np.zeros((s,s), dtype=float)
+  area = np.zeros((s,s), dtype=float)
+  for e in range(s): #easting 
+    for n in range(s): #northing
+      p = exp_params['center']  + np.complex((n - exp_params['half_span']) * exp_params['scale'], 
+                                             (e - exp_params['half_span']) * exp_params['scale'])
+      p_hat = pos[i,j,e,n,:]
+      C = np.cov(np.imag(p_hat), np.real(p_hat))
+      E = position1.Ellipse(p, *position1.compute_conf(C, Qt))
+      angle[e,n] = E.angle
+      eccentricity[e,n] = E.axes[1] / E.axes[0]
+      area[e,n] = E.area()
+
+
+  c_norm  = colors.Normalize(vmin=np.min(eccentricity), vmax=np.max(eccentricity))
+  scalar_map = cmx.ScalarMappable(norm=c_norm,cmap='YlGnBu')
+ 
+  # Eccentricity
+  for e in range(s):
+    for n in range(s):
+      p = exp_params['center']  + np.complex((n - exp_params['half_span']) * exp_params['scale'], 
+                                             (e - exp_params['half_span']) * exp_params['scale'])
+      b = scalar_map.to_rgba(eccentricity[e,n])
+      pp.scatter(p.imag, p.real, marker='s', color=b, edgecolors='none', s=50, alpha=0.8) 
+
+  # Area, orientation
+  area = area / np.max(area)
+  weight = 0.5
+  lweight = 50
+  for e in range(s): #easting 
+    for n in range(s): #northing
+      p = exp_params['center']  + np.complex((n - exp_params['half_span']) * exp_params['scale'], 
+                                             (e - exp_params['half_span']) * exp_params['scale'])
+      a = area[e,n]
+      dx = np.cos(angle[e,n]) * a * lweight
+      dy = np.sin(angle[e,n]) * a * lweight
+      pp.plot([p.imag - dx/2, p.imag + dx/2], 
+              [p.real - dy/2, p.real + dy/2],
+              lw=weight, color='k') 
+  
+  # Plot sites
+  (site_ids, P) = zip(*sys_params['sites'].iteritems())
+  X = np.imag(P)
+  Y = np.real(P)
+  pp.xlim([np.min(X) - 100, np.max(X) + 100])
+  pp.ylim([np.min(Y) - 100, np.max(Y) + 100])
+  
+  offset = 20
+  for (id, (x,y)) in zip(site_ids, zip(X,Y)): 
+    pp.text(x+offset, y+offset, id)
+  pp.scatter(X, Y, label='sites', facecolors='r')
+
+  #X = np.imag(pos.flat)
+  #Y = np.real(pos.flat)
+  #pp.scatter(X, Y, label='estimates', alpha=0.1, facecolors='b', edgecolors='none', s=5)
+
+  pp.savefig(fn, dpi=600)
+  pp.clf()
+
+def plot_heatmap(fn, data, exp_params, sys_params):
+
+  fig = pp.gcf()
+  #fig.set_size_inches(12,10)
+  ax = fig.add_subplot(111)
+  ax.axis('equal')
+  ax.set_xlabel('easting (m)')
+  ax.set_ylabel('northing (m)')
+  d = exp_params['half_span'] * exp_params['scale']
+  pp.xlim([exp_params['center'].imag - d, exp_params['center'].imag + d])
+  pp.ylim([exp_params['center'].real - d, exp_params['center'].real + d])
+  s = 2 * exp_params['half_span'] + 1
+  
+  a = data[~np.isnan(data)]
+  print a
+  c_norm  = colors.Normalize(vmin=np.min(a), vmax=np.max(a))
+  scalar_map = cmx.ScalarMappable(norm=c_norm,cmap='YlGnBu')
+
+  for e in range(s):
+    for n in range(s):
+      p = exp_params['center']  + np.complex((n - exp_params['half_span']) * exp_params['scale'], 
+                                             (e - exp_params['half_span']) * exp_params['scale'])
+      if ~np.isnan(data[e,n]): 
+        b = scalar_map.to_rgba(data[e,n])
+        pp.scatter(p.imag, p.real, marker='s', color=b, edgecolors='none', s=18, alpha=1) 
+  
+  # Plot sites
+  (site_ids, P) = zip(*sys_params['sites'].iteritems())
+  X = np.imag(P)
+  Y = np.real(P)
+  
+  offset = 20
+  for (id, (x,y)) in zip(site_ids, zip(X,Y)): 
+    pp.text(x+offset, y+offset, id)
+  pp.scatter(X, Y, label='sites', facecolors='r')
+
+  pp.savefig(fn, dpi=300)
+  pp.clf()
+
 def contour_test(prefix, center, sites, sv, conf_level): 
   
   exp_params = { 'rho'       : 74101.39, # Scaled so that contour_test() and grid_test() are comparable. 
@@ -964,22 +975,36 @@ def contour_test(prefix, center, sites, sv, conf_level):
                  'center'  : center,
                  'sites'   : sites } 
 
-  # Spawn a process for each noise level. 
-  proc = []
-  for sig_n in [0.001, 0.01, 0.1]:
-    proc.append( Process(target=_contour_test, args=(prefix, exp_params, sys_params, sv, sig_n)) )
-    proc[-1].start()
+#  # show the number of sites visible from each site.   
+#  s = 2*exp_params['half_span'] + 1
+#  for e in range(s): #easting 
+#    row = []
+#    for n in range(s): #northing
+#      P = exp_params['center']  + np.complex((n - exp_params['half_span']) * exp_params['scale'], 
+#                                             (e - exp_params['half_span']) * exp_params['scale'])
+#      row.append(len(sites_within_dist(P, sites, 1000)))
+#    print ''.join(map(lambda n: str(n), row))
 
-  # Wait for them to finish. 
-  for i in range(3): 
-    proc[i].join()
-    
-  sig_n = 0.001
-  (pos, cov, exp_params, sys_params) = load(prefix+('-%0.3f' % sig_n))
-  plot_grid('contour-grid.png', exp_params, sys_params,
-       exp_params['pulse_ct'][0], exp_params['sig_n'][0], pos)
-  plot_contour('contour.png', exp_params, sys_params, 
-       exp_params['pulse_ct'][0], exp_params['sig_n'][0], pos, conf_level)
+  noise = [0.001, 0.01, 0.1]
+  
+#  # Spawn a process for each noise level. 
+#  proc = []
+#  for sig_n in noise:
+#    proc.append( Process(target=_contour_test, args=(prefix, exp_params, sys_params, sv, sig_n)) )
+#    proc[-1].start()
+#
+#  # Wait for them to finish. 
+#  for i in range(len(noise)): 
+#    proc[i].join()
+
+  for sig_n in noise:
+    print sig_n
+    (pos, cov, exp_params, sys_params) = load(prefix+('-%0.3f' % sig_n))
+    exp_params['sig_n'] = [sig_n]
+    res = generate_report(pos, None, exp_params, sys_params, conf_level)
+    plot_heatmap('area-%0.3f.png' % sig_n, res['area'][0,0,:,:], exp_params, sys_params)  
+    plot_heatmap('recc-%0.3f.png' % sig_n, res['ecc'][0,0,:,:], exp_params, sys_params)  
+
 
 def _contour_test(prefix, exp_params, sys_params, sv, sig_n):
   exp_params['sig_n'] = [sig_n]

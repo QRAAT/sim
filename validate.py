@@ -15,6 +15,37 @@ conf_level=0.95
 position1.NORMALIZE_SPECTRUM=False
 
 
+def band_dist(dep_id, sites, db_con):
+  
+  cur = db_con.cursor()
+  band3 = {}
+  band10 = {}
+  for site_id in sites.keys():
+    cur.execute('''SELECT band3, band10 
+                     FROM qraat.est
+                    WHERE deploymentID=%s
+                      AND siteID=%s''', (dep_id, site_id))
+    band3[site_id] = []
+    band10[site_id] = []
+    for (bw3, bw10) in cur.fetchall(): 
+      band3[site_id].append(bw3)
+      band10[site_id].append(bw10)
+    
+    N=100
+
+    fig = pp.gcf()
+    n, bins, patches = pp.hist(band3[site_id], N, histtype='stepfilled')
+    pp.setp(patches, 'facecolor', 'g', 'alpha', 0.75)
+    pp.savefig('band3_dep%d_site%d.png' % (dep_id, site_id))
+    pp.clf()
+    
+    fig = pp.gcf()
+    n, bins, patches = pp.hist(band10[site_id], N, histtype='stepfilled')
+    pp.setp(patches, 'facecolor', 'r', 'alpha', 0.75)
+    pp.savefig('band10_dep%d_site%d.png' % (dep_id, site_id))
+    pp.clf()
+
+
 def process(sv, sites, center, params):
 
   dep_id = params['dep_id']
@@ -190,27 +221,27 @@ if __name__ == '__main__':
 
   prefix = 'beacon'
   fn = prefix + ''.join(map(lambda id: str(id), params['include']))
-
   print fn
- 
+     
+  #band_dist(params['dep_id'], sites, db_con)
   #plot_map(site34, sites, 'beacon-map')
   
   #P, C = process(sv, sites, center, params)
   #pickle.dump((P, C), open(fn+'.'+suffix, 'w'))
-  (P, C) = pickle.load(open(fn+'.'+suffix, 'r'))
-
-  plot(P, fn, site34)
-
-  print "Count"
-  for (site_ids, ct) in count(C).iteritems():
-    print site_ids, '-->', ct
-
-  print "\nCorrelation" # of distance to true position and ellipse area
-  for (site_ids, r) in correlation(P, C, site34).iteritems():
-    print site_ids, '--> %0.4f, p-val=%0.4f' % r
-
-  print "\nCvg. probability" 
-  for (site_ids, p) in coverage(P, C).iteritems():
-    print site_ids, '--> %0.4f' % p
+#  (P, C) = pickle.load(open(fn+'.'+suffix, 'r'))
+#
+#  plot(P, fn, site34)
+#
+#  print "Count"
+#  for (site_ids, ct) in count(C).iteritems():
+#    print site_ids, '-->', ct
+#
+#  print "\nCorrelation" # of distance to true position and ellipse area
+#  for (site_ids, r) in correlation(P, C, site34).iteritems():
+#    print site_ids, '--> %0.4f, p-val=%0.4f' % r
+#
+#  print "\nCvg. probability" 
+#  for (site_ids, p) in coverage(P, C).iteritems():
+#    print site_ids, '--> %0.4f' % p
   
 
