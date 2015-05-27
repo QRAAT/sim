@@ -28,7 +28,7 @@ center = (4260500+574500j)
 zone = (10, 'S') # UTM zone.
 
 # Read steering vectors from file.
-db_con = util.get_db('reader')
+db_con = util.get_db('writer')
 sv = signal.SteeringVectors(db_con, cal_id)
 
 
@@ -37,16 +37,21 @@ def real_data():
   # Read signal data, about an hour's worth.
   sv = signal.SteeringVectors.read(3, 'sample/sv')
   sig = signal.Signal.read(sites.keys(), 'sample/sig')
- 
-  fn = 'two'
-
   t_step=120
-  t_win=30
+  t_win=60
   pos = position1.WindowedPositionEstimator(dep_id, sites, center, sig, sv, 
                              t_step, t_win, method=signal.Signal.Bartlet)
   
-  cov = position1.WindowedCovarianceEstimator(sites, pos, max_resamples=50)
-  print cov
+  cov = position1.WindowedCovarianceEstimator(sites, pos, max_resamples=100)
+
+  position1.InsertPositionsCovarinaces(db_con, zone, pos, cov)
+
+def read_db():
+  t_start = 1407452400
+  t_end   = 1407455880
+  pos = position1.ReadPositions(db_con, dep_id, t_start, t_end)
+  cov = position1.ReadCovariances(db_con, dep_id, t_start, t_end)
+  print len(pos)
 
 def sim_data():
 
@@ -70,10 +75,11 @@ def sim_data():
   E.display(p)
   #E.plot('conf.png', p)
   
-  #position1.BootstrapCovariance2(pos, sites).conf(level).display(p)
+  position1.BootstrapCovariance2(pos, sites).conf(level).display(p)
   #position1.Covariance(pos, sites, p_known=p).conf(level).display(p)
 
 
 # Testing, testing .... 
-sim_data()
-real_data()
+#sim_data()
+#real_data()
+read_db()
