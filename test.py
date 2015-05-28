@@ -35,23 +35,23 @@ sv = signal.SteeringVectors(db_con, cal_id)
 def real_data():
 
   # Read signal data, about an hour's worth.
-  sv = signal.SteeringVectors.read(3, 'sample/sv')
+  sv = signal.SteeringVectors.read(cal_id, 'sample/sv')
   sig = signal.Signal.read(sites.keys(), 'sample/sig')
   t_step=120
   t_win=60
-  pos = position1.WindowedPositionEstimator(dep_id, sites, center, sig, sv, 
+  pos = position1.WindowedPositionEstimator(sig, sites, center, sv, 
                              t_step, t_win, method=signal.Signal.Bartlet)
-  
-  cov = position1.WindowedCovarianceEstimator(sites, pos, max_resamples=100)
-
-  position1.InsertPositionsCovarinaces(db_con, zone, pos, cov)
+ 
+  cov = position1.WindowedCovarianceEstimator(pos, sites, max_resamples=100)
+  position1.InsertPositionsCovariances(db_con, dep_id, cal_id, zone, pos, cov)
 
 def read_db():
   t_start = 1407452400
   t_end   = 1407455880
   pos = position1.ReadPositions(db_con, dep_id, t_start, t_end)
-  cov = position1.ReadCovariances(db_con, dep_id, t_start, t_end)
-  print len(pos)
+  conf = position1.ReadConfidenceRegions(db_con, dep_id, t_start, t_end, 0.95)
+  bearings = position1.ReadAllBearings(db_con, dep_id, t_start, t_end)
+
 
 def sim_data():
 
@@ -66,9 +66,9 @@ def sim_data():
     
   (sig_n, sig_t) = sig.estimate_var()
 
-  pos = position1.PositionEstimator(999, sites, center, 
-                               sig, sv, method=signal.Signal.Bartlet)
-  pos.plot('fella.png', sites, center, p)
+  pos = position1.PositionEstimator(sig, sites, center, 
+                               sv, method=signal.Signal.Bartlet)
+  pos.plot('fella.png', 999, sites, center, p)
  
   level=0.95
   E = position1.BootstrapCovariance(pos, sites).conf(level)

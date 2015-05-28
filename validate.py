@@ -65,14 +65,14 @@ def process(sv, sites, center, params):
 
     # Signal data
     sig = signal.Signal(db_con, dep_id, t, t+t_chunk, include=include, exclude=exclude,
-                          score_threshold=0.5)
+                          score_threshold=0.0)
     print "chunk", ct, '(%d pulses)' % sig.get_count()
     ct += 1
     if sig.t_start == float("+inf"):
       continue
 
     # Compute positions
-    positions = position1.WindowedPositionEstimator(dep_id, sites, site34, sig, sv, 
+    positions = position1.WindowedPositionEstimator(sig, sites, site34, sv, 
                              t_step, t_win, method=signal.Signal.Bartlet)
    
     for pos in positions:
@@ -218,8 +218,8 @@ if __name__ == '__main__':
   (center, zone) = util.get_center(db_con)
   
   # Becaon parameters
-  params = { 't_step' : 15, 
-             't_win' : 15, 
+  params = { 't_step' : 30, 
+             't_win' : 60, 
              't_chunk' : 3600 / 4,
              'dep_id' : 60,
              't_start' : 1383098400.51432,
@@ -232,18 +232,18 @@ if __name__ == '__main__':
   #t_start = 1396725598.548015
   #t_end = 1396732325.777558
 
-  prefix = 'f0.5beacon' 
+  prefix = 'f60beacon' 
   fn = prefix + ''.join(map(lambda id: str(id), params['include']))
   print fn
      
   #band_dist(params['dep_id'], sites, db_con)
   #plot_map(site34, sites, 'beacon-map')
   
-  #P, C = process(sv, sites, center, params)
-  #pickle.dump((P, C), open(fn+'.'+suffix, 'w'))
-  (P, C) = pickle.load(open(fn+'.'+suffix, 'r'))
+  P, C = process(sv, sites, center, params)
+  pickle.dump((P, C), open(fn+'.'+suffix, 'w'))
+  #(P, C) = pickle.load(open(fn+'.'+suffix, 'r'))
 
-  #plot(P, fn, site34)
+  plot(P, fn, site34)
 
   a = sorted(P.keys())
 

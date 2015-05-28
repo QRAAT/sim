@@ -114,7 +114,7 @@ def montecarlo(exp_params, sys_params, sv, nearest=None, max_dist=None, compute_
             # NOTE For convergence test use `sys_params['center']` for initial guess 
             # instead of `P`. The true position is used here to assure convergence to 
             # the global maximum. 
-            P_hat = position1.PositionEstimator(999, sites, P, sig, sv, method, 
+            P_hat = position1.PositionEstimator(sig, sites, P, sv, method, 
                              s=POS_EST_S, m=POS_EST_M, n=POS_EST_N, delta=POS_EST_DELTA)
             pos[i,j,e,n,k] = P_hat.p
 
@@ -207,7 +207,7 @@ def _montecarlo_huge(prefix, exp_params, sys_params, sv, nearest, compute_cov,
           sig = signal.Simulator(P, sites, sv_splines, scaled_rho, sig_n, pulse_ct, include)
         
           # Estimate position.
-          P_hat = position1.PositionEstimator(999, sites, P, sig, sv, method, 
+          P_hat = position1.PositionEstimator(sig, sites, P, sv, method, 
                            s=POS_EST_S, m=POS_EST_M, n=POS_EST_N, delta=POS_EST_DELTA)
           pos[i,j,k] = P_hat.p
 
@@ -258,10 +258,10 @@ def montecarlo_spectrum(exp_params, sys_params, sv):
             sig = signal.Simulator(P, sites, sv_splines, scaled_rho, sig_n, pulse_ct, include)
           
             # Estimate position.
-            A = position1.PositionEstimator(999, sites, P, sig, sv, signal.Signal.Bartlet, 
+            A = position1.PositionEstimator(sig, sites, P, sv, signal.Signal.Bartlet, 
                              s=POS_EST_S, m=POS_EST_M, n=POS_EST_N, delta=POS_EST_DELTA)
             pos_bartlet[i,j,e,n,k] = A.p
-            B = position1.PositionEstimator(999, sites, P, sig, sv, signal.Signal.MLE, 
+            B = position1.PositionEstimator(sig, sites, P, sv, signal.Signal.MLE, 
                              s=POS_EST_S, m=POS_EST_M, n=POS_EST_N, delta=POS_EST_DELTA)
             pos_mle[i,j,e,n,k] = B.p
           print n,
