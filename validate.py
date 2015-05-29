@@ -1,6 +1,13 @@
-# beacon.dat -- Estimates of beacon data from all available sites. 
-# beacon36.dat -- include=[3,6]
-# beacon26.dat -- include=[2,6]
+# beacon.dat       -- t_win=15
+# beacon136.dat    -- include=[1,3,6]
+# beacon13.dat     -- include=[1,3]
+# beacon16.dat     -- include=[1,6]
+# beacon36.dat     -- include=[3,6]
+# f0beacon.dat     -- score_threshold>=0, t_win=15
+# f0.5beacon.dat   -- score_threshold>=0.5, t_win=15
+# f30beacon.dat    -- score_threshold>=0, t_win=30
+# f60beacon.dat    -- score_threshold>=0, t_win=60
+# f60beacon.e1.dat -- score_threshold>=0, t_win=60, exclude=[1]
 
 from qraat.srv import util, signal, position
 
@@ -225,7 +232,7 @@ if __name__ == '__main__':
              't_start' : 1383098400.51432,
              't_end' : 1383443999.351099,
              'include' : [],
-             'exclude' : [] } 
+             'exclude' : [1] } 
   
   # Mary-Brook-walk-around params
   #dep_id = 61
@@ -234,6 +241,8 @@ if __name__ == '__main__':
 
   prefix = 'f60beacon' 
   fn = prefix + ''.join(map(lambda id: str(id), params['include']))
+  if len(params['exclude']) > 0:
+    fn += '.e' + ''.join(map(lambda id: str(id), params['exclude']))
   print fn
      
   #band_dist(params['dep_id'], sites, db_con)
