@@ -3,7 +3,7 @@
 #  utm, numdifftools (available through pip)
 #  numpy, scipy, matplotlib 
 
-from qraat.srv import util, signal, position1
+from qraat.srv import util, signal, position
 
 import numpy as np
 import matplotlib.pyplot as pp
@@ -31,7 +31,6 @@ zone = (10, 'S') # UTM zone.
 db_con = util.get_db('writer')
 sv = signal.SteeringVectors(db_con, cal_id)
 
-
 def real_data():
 
   # Read signal data, about an hour's worth.
@@ -39,18 +38,18 @@ def real_data():
   sig = signal.Signal.read(sites.keys(), 'sample/sig')
   t_step=120
   t_win=60
-  pos = position1.WindowedPositionEstimator(sig, sites, center, sv, 
+  pos = position.WindowedPositionEstimator(sig, sites, center, sv, 
                              t_step, t_win, method=signal.Signal.Bartlet)
  
-  cov = position1.WindowedCovarianceEstimator(pos, sites, max_resamples=100)
-  position1.InsertPositionsCovariances(db_con, dep_id, cal_id, zone, pos, cov)
+  cov = position.WindowedCovarianceEstimator(pos, sites, max_resamples=100)
+  position.InsertPositionsCovariances(db_con, dep_id, cal_id, zone, pos, cov)
 
 def read_db():
   t_start = 1407452400
   t_end   = 1407455880
-  pos = position1.ReadPositions(db_con, dep_id, t_start, t_end)
-  conf = position1.ReadConfidenceRegions(db_con, dep_id, t_start, t_end, 0.95)
-  bearings = position1.ReadAllBearings(db_con, dep_id, t_start, t_end)
+  pos = position.ReadPositions(db_con, dep_id, t_start, t_end)
+  conf = position.ReadConfidenceRegions(db_con, dep_id, t_start, t_end, 0.95)
+  bearings = position.ReadAllBearings(db_con, dep_id, t_start, t_end)
 
 
 def sim_data():
@@ -66,20 +65,20 @@ def sim_data():
     
   (sig_n, sig_t) = sig.estimate_var()
 
-  pos = position1.PositionEstimator(sig, sites, center, 
+  pos = position.PositionEstimator(sig, sites, center, 
                                sv, method=signal.Signal.Bartlet)
   pos.plot('fella.png', 999, sites, center, p)
  
   level=0.95
-  E = position1.BootstrapCovariance(pos, sites).conf(level)
+  E = position.BootstrapCovariance(pos, sites).conf(level)
   E.display(p)
   #E.plot('conf.png', p)
   
-  position1.BootstrapCovariance2(pos, sites).conf(level).display(p)
-  #position1.Covariance(pos, sites, p_known=p).conf(level).display(p)
+  position.BootstrapCovariance2(pos, sites).conf(level).display(p)
+  #position.Covariance(pos, sites, p_known=p).conf(level).display(p)
 
 
 # Testing, testing .... 
 #sim_data()
-#real_data()
-read_db()
+real_data()
+#read_db()

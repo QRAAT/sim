@@ -2,7 +2,7 @@
 # beacon36.dat -- include=[3,6]
 # beacon26.dat -- include=[2,6]
 
-from qraat.srv import util, signal, position1
+from qraat.srv import util, signal, position
 
 import scipy.stats
 import numpy as np
@@ -12,7 +12,7 @@ import pickle
 suffix = 'dat'
 conf_level=0.95
 
-position1.NORMALIZE_SPECTRUM=False
+position.NORMALIZE_SPECTRUM=False
 
 
 def band_dist(dep_id, sites, db_con):
@@ -72,7 +72,7 @@ def process(sv, sites, center, params):
       continue
 
     # Compute positions
-    positions = position1.WindowedPositionEstimator(sig, sites, site34, sv, 
+    positions = position.WindowedPositionEstimator(sig, sites, site34, sv, 
                              t_step, t_win, method=signal.Signal.Bartlet)
    
     for pos in positions:
@@ -87,25 +87,25 @@ def process(sv, sites, center, params):
       
       if pos.p is not None:
         try: 
-          cov = position1.BootstrapCovariance(pos, sites, max_resamples=500)
+          cov = position.BootstrapCovariance(pos, sites, max_resamples=500)
           E = cov.conf(conf_level)
           C[site_ids].append((E.angle, E.axes[0], E.axes[1]))
           print "Ok"
           good += 1
-        except position1.SingularError:
+        except position.SingularError:
           C[site_ids].append(None)
           print "non positive indefinite"
-        except position1.PosDefError: 
+        except position.PosDefError: 
           C[site_ids].append(None)
           print "non positive indefinite (PosDefError)"
-        except position1.BootstrapError:
+        except position.BootstrapError:
           C[site_ids].append(None)
           print "samples ..." 
       else: C[site_ids].append(None)
       total += 1
 
   print 'good', good, "out of", total, "(t_win=%d, norm=%s)" % (
-                              t_win, position1.NORMALIZE_SPECTRUM)
+                              t_win, position.NORMALIZE_SPECTRUM)
   return (P, C)
 
 
@@ -172,7 +172,7 @@ def correlation(P, C, p_known=None):
       for i in range(len(P[site_ids])): 
         if C[site_ids][i] is not None and C[site_ids][i][1] > 0 and C[site_ids][i][2]> 0: 
           angle, axis0, axis1 = C[site_ids][i]
-          E = position1.Ellipse(P[site_ids][i], angle, [axis0, axis1])
+          E = position.Ellipse(P[site_ids][i], angle, [axis0, axis1])
           val.append(E.area())
           if p_known is None: 
             dist.append(np.abs(P[site_ids][i] - p_mean))
@@ -193,7 +193,7 @@ def coverage(P, C, p_known=None):
       for i in range(len(P[site_ids])): 
         if C[site_ids][i] is not None and C[site_ids][i][1] > 0 and C[site_ids][i][2]> 0: 
           angle, axis0, axis1 = C[site_ids][i]
-          E = position1.Ellipse(P[site_ids][i], angle, [axis0, axis1])
+          E = position.Ellipse(P[site_ids][i], angle, [axis0, axis1])
           if p_known is None:
             val.append(p_mean in E)
           else: val.append(p_known in E)

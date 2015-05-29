@@ -1,6 +1,6 @@
 # sim.py -- Run simulations. 
 
-from qraat.srv import util, signal, position1
+from qraat.srv import util, signal, position
 
 import pickle, gzip, copy
 import os, os.path
@@ -114,15 +114,15 @@ def montecarlo(exp_params, sys_params, sv, nearest=None, max_dist=None, compute_
             # NOTE For convergence test use `sys_params['center']` for initial guess 
             # instead of `P`. The true position is used here to assure convergence to 
             # the global maximum. 
-            P_hat = position1.PositionEstimator(sig, sites, P, sv, method, 
+            P_hat = position.PositionEstimator(sig, sites, P, sv, method, 
                              s=POS_EST_S, m=POS_EST_M, n=POS_EST_N, delta=POS_EST_DELTA)
             pos[i,j,e,n,k] = P_hat.p
 
             # Estimate confidence region. 
             if compute_cov:
-              cov_asym[i][j][e][n].append(position1.Covariance(P_hat, sites, p_known=P))
+              cov_asym[i][j][e][n].append(position.Covariance(P_hat, sites, p_known=P))
               try: 
-                cov_boot[i][j][e][n].append(position1.BootstrapCovariance(P_hat, sites))
+                cov_boot[i][j][e][n].append(position.BootstrapCovariance(P_hat, sites))
               except np.linalg.linalg.LinAlgError:
                 print "Singular matrix!"
                 cov_boot[i][j][e][n].append(None)
@@ -207,15 +207,15 @@ def _montecarlo_huge(prefix, exp_params, sys_params, sv, nearest, compute_cov,
           sig = signal.Simulator(P, sites, sv_splines, scaled_rho, sig_n, pulse_ct, include)
         
           # Estimate position.
-          P_hat = position1.PositionEstimator(sig, sites, P, sv, method, 
+          P_hat = position.PositionEstimator(sig, sites, P, sv, method, 
                            s=POS_EST_S, m=POS_EST_M, n=POS_EST_N, delta=POS_EST_DELTA)
           pos[i,j,k] = P_hat.p
 
           # Estimate confidence region. 
           if compute_cov:
-            cov_asym[i][j].append(position1.Covariance(P_hat, sites, p_known=P))
+            cov_asym[i][j].append(position.Covariance(P_hat, sites, p_known=P))
             try: 
-              cov_boot[i][j].append(position1.BootstrapCovariance(P_hat, sites))
+              cov_boot[i][j].append(position.BootstrapCovariance(P_hat, sites))
             except np.linalg.linalg.LinAlgError:
               print "Singular matrix!"
               cov_boot[i][j].append(None)
@@ -258,10 +258,10 @@ def montecarlo_spectrum(exp_params, sys_params, sv):
             sig = signal.Simulator(P, sites, sv_splines, scaled_rho, sig_n, pulse_ct, include)
           
             # Estimate position.
-            A = position1.PositionEstimator(sig, sites, P, sv, signal.Signal.Bartlet, 
+            A = position.PositionEstimator(sig, sites, P, sv, signal.Signal.Bartlet, 
                              s=POS_EST_S, m=POS_EST_M, n=POS_EST_N, delta=POS_EST_DELTA)
             pos_bartlet[i,j,e,n,k] = A.p
-            B = position1.PositionEstimator(sig, sites, P, sv, signal.Signal.MLE, 
+            B = position.PositionEstimator(sig, sites, P, sv, signal.Signal.MLE, 
                              s=POS_EST_S, m=POS_EST_M, n=POS_EST_N, delta=POS_EST_DELTA)
             pos_mle[i,j,e,n,k] = B.p
           print n,
@@ -332,12 +332,12 @@ def generate_report(pos, cov, exp_params, sys_params, conf_level, offset=True):
           
           try: 
             C = np.cov(np.imag(p_hat), np.real(p_hat))
-            (angle, axes) = position1.compute_conf(C, Qt)
-            E = position1.Ellipse(p, angle, axes)
+            (angle, axes) = position.compute_conf(C, Qt)
+            E = position.Ellipse(p, angle, axes)
             res['area'][i,j,e,n] = E.area()
             res['ecc'][i,j,e,n] = E.eccentricity()
             res['recc'][i,j,e,n] = E.axes[1] / E.axes[0]
-          except position1.PosDefError:
+          except position.PosDefError:
             E = None
             res['area'][i,j,e,n] = None
             res['ecc'][i,j,e,n] = None
@@ -362,7 +362,7 @@ def generate_report(pos, cov, exp_params, sys_params, conf_level, offset=True):
                     ct += 1
                     if p in E_hat: a += 1
                   if not E or p_hat[k] in E: b += 1
-                except position1.PosDefError:
+                except position.PosDefError:
                   pass # print "Positive definite!"
             
             if ct == 0:
@@ -523,9 +523,9 @@ def plot_distance(fn, pos, exp_params, sys_params, pulse_ct, sig_n, conf_level, 
   E = [] # eccentricity
   for (k, P) in enumerate(pos): 
     C = np.cov(np.imag(P[i,j,:,:,:].flat), np.real(P[i,j,:,:,:].flat))
-    (angle, axes) = position1.compute_conf(C, Qt)
+    (angle, axes) = position.compute_conf(C, Qt)
     D.append(dist2 + (step * k))
-    E.append(position1.Ellipse(p, angle, axes).eccentricity())
+    E.append(position.Ellipse(p, angle, axes).eccentricity())
   pp.plot(D, E)
   
   l = 300; h = 0.17
@@ -556,7 +556,7 @@ def plot_angular(fn, pos, site2_pos, exp_params, sys_params, pulse_ct, sig_n, co
   eccentricity = []
   for (k, P) in enumerate(pos): # Plot positions.
     C = np.cov(np.imag(P[i,j,:,:,:].flat), np.real(P[i,j,:,:,:].flat))
-    E = position1.Ellipse(p, *position1.compute_conf(C, Qt))
+    E = position.Ellipse(p, *position.compute_conf(C, Qt))
     angle.append((180 * (k+1)) / step)
     orientation.append((180 * E.angle / np.pi) % 180)
     eccentricity.append(E.eccentricity())
@@ -573,7 +573,7 @@ def plot_angular(fn, pos, site2_pos, exp_params, sys_params, pulse_ct, sig_n, co
   
   
 def plot_rmse(fn, pos, p, exp_params, sys_params): 
-  x = position1.transform_coord(p, exp_params['center'], 
+  x = position.transform_coord(p, exp_params['center'], 
                   exp_params['half_span'], exp_params['scale'])
   e = x[0]; n = x[1]
   
@@ -598,7 +598,7 @@ def plot_rmse(fn, pos, p, exp_params, sys_params):
 
 
 def plot_area(fn, pos, p, exp_params, sys_params, conf_level, cov=None): 
-  x = position1.transform_coord(p, exp_params['center'], 
+  x = position.transform_coord(p, exp_params['center'], 
                   exp_params['half_span'], exp_params['scale'])
   e = x[0]; n = x[1]
   Qt = scipy.stats.chi2.ppf(conf_level, 2)
@@ -615,9 +615,9 @@ def plot_area(fn, pos, p, exp_params, sys_params, conf_level, cov=None):
     for (i, pulse_ct) in enumerate(exp_params['pulse_ct']):
       p_hat = pos[i,j,e,n,:]
       C = np.cov(np.imag(p_hat), np.real(p_hat))
-      (angle, axes) = position1.compute_conf(C, Qt)
+      (angle, axes) = position.compute_conf(C, Qt)
       area.append(
-        position1.Ellipse(p, angle, axes).area())
+        position.Ellipse(p, angle, axes).area())
     pp.plot(exp_params['pulse_ct'], area, label='$\sigma_n^2=%0.3f$' % sig_n)
 
   pp.legend(title='Noise level', ncol=2)
@@ -632,7 +632,7 @@ def plot_area(fn, pos, p, exp_params, sys_params, conf_level, cov=None):
 
 def conf_test(prefix, center, sites, sv, conf_level): 
   
-  position1.NORMALIZE_SPECTRUM = True
+  position.NORMALIZE_SPECTRUM = True
   exp_params = { 'rho'       : 1,
                  'sig_n'     : [0.01],
                  'pulse_ct'  : [6],
@@ -870,7 +870,7 @@ def plot_contour(fn, exp_params, sys_params, pulse_ct, sig_n, pos, conf_level):
                                              (e - exp_params['half_span']) * exp_params['scale'])
       p_hat = pos[i,j,e,n,:]
       C = np.cov(np.imag(p_hat), np.real(p_hat))
-      E = position1.Ellipse(p, *position1.compute_conf(C, Qt))
+      E = position.Ellipse(p, *position.compute_conf(C, Qt))
       angle[e,n] = E.angle
       eccentricity[e,n] = E.axes[1] / E.axes[0]
       area[e,n] = E.area()
