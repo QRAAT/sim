@@ -4,7 +4,7 @@
 # beacon16.dat     -- include=[1,6]
 # beacon36.dat     -- include=[3,6]
 # f0beacon.dat     -- score_threshold>=0, t_win=15
-# f0.5beacon.dat   -- score_threshold>=0.5, t_win=15
+# f0.5beacon.dat   -- score_threshold>=0.5, t_win=60
 # f30beacon.dat    -- score_threshold>=0, t_win=30
 # f60beacon.dat    -- score_threshold>=0, t_win=60
 # f60beacon.e1.dat -- score_threshold>=0, t_win=60, exclude=[1]
@@ -72,7 +72,7 @@ def process(sv, sites, center, params):
 
     # Signal data
     sig = signal.Signal(db_con, dep_id, t, t+t_chunk, include=include, exclude=exclude,
-                          score_threshold=0.0)
+                          score_threshold=0.15)
     print "chunk", ct, '(%d pulses)' % sig.get_count()
     ct += 1
     if sig.t_start == float("+inf"):
@@ -232,14 +232,14 @@ if __name__ == '__main__':
              't_start' : 1383098400.51432,
              't_end' : 1383443999.351099,
              'include' : [],
-             'exclude' : [1] } 
+             'exclude' : [] } 
   
   # Mary-Brook-walk-around params
   #dep_id = 61
   #t_start = 1396725598.548015
   #t_end = 1396732325.777558
 
-  prefix = 'f60beacon' 
+  prefix = 'f30beacon' 
   fn = prefix + ''.join(map(lambda id: str(id), params['include']))
   if len(params['exclude']) > 0:
     fn += '.e' + ''.join(map(lambda id: str(id), params['exclude']))
@@ -248,9 +248,9 @@ if __name__ == '__main__':
   #band_dist(params['dep_id'], sites, db_con)
   #plot_map(site34, sites, 'beacon-map')
   
-  P, C = process(sv, sites, center, params)
-  pickle.dump((P, C), open(fn+'.'+suffix, 'w'))
-  #(P, C) = pickle.load(open(fn+'.'+suffix, 'r'))
+  #P, C = process(sv, sites, center, params)
+  #pickle.dump((P, C), open(fn+'.'+suffix, 'w'))
+  (P, C) = pickle.load(open(fn+'.'+suffix, 'r'))
 
   plot(P, fn, site34)
 
@@ -276,7 +276,7 @@ if __name__ == '__main__':
     if p == None:
       print site_ids
     elif p[0] == 0:
-      print site_ids, 0
+      print site_ids, '%d/%d' % (p[0], p[1])
     else:
       print site_ids, '--> %%%.1f %d/%d' % ((float(100*p[0])/p[1],) + p)
  

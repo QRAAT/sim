@@ -74,11 +74,11 @@ def sim_data():
   E.display(p)
   #E.plot('conf.png', p)
   
-  position.BootstrapCovariance2(pos, sites).conf(level).display(p)
+  #position.BootstrapCovariance2(pos, sites).conf(level).display(p)
   #position.Covariance(pos, sites, p_known=p).conf(level).display(p)
 
 
 # Testing, testing .... 
-#sim_data()
-real_data()
+sim_data()
+#real_data()
 #read_db()
