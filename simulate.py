@@ -472,6 +472,95 @@ def plot_grid(fn, exp_params, sys_params, pulse_ct, sig_n, pos=None, nearest=Non
 
 
 
+def plot_heatmap(fn, data, exp_params, sys_params, thresh=None):
+
+  pp.rc('text', usetex=True)
+  pp.rc('font', family='serif')
+  fig = pp.gcf()
+  fig.set_size_inches(5,4.8)
+  ax = fig.add_subplot(111)
+  ax.axis('equal')
+  ax.set_xlabel('easting (m)')
+  ax.set_ylabel('northing (m)')
+  d = exp_params['half_span'] * exp_params['scale']
+  pp.xlim([exp_params['center'].imag - d, exp_params['center'].imag + d])
+  pp.ylim([exp_params['center'].real - d, exp_params['center'].real + d])
+  s = 2 * exp_params['half_span'] + 1
+  
+  a = data[~np.isnan(data)]
+  print a
+  if thresh:
+    c_norm  = colors.Normalize(vmin=np.min(a), vmax=np.min(a)+thresh)
+  else:
+    c_norm  = colors.Normalize(vmin=np.min(a), vmax=np.max(a))
+  scalar_map = cmx.ScalarMappable(norm=c_norm,cmap='YlGnBu')
+
+  for e in range(s):
+    for n in range(s):
+      p = exp_params['center']  + np.complex((n - exp_params['half_span']) * exp_params['scale'], 
+                                             (e - exp_params['half_span']) * exp_params['scale'])
+      if ~np.isnan(data[e,n]): 
+        b = scalar_map.to_rgba(data[e,n])
+        pp.scatter(p.imag, p.real, marker='s', color=b, edgecolors='none', s=18, alpha=1) 
+  
+  # Plot sites
+  (site_ids, P) = zip(*sys_params['sites'].iteritems())
+  X = np.imag(P)
+  Y = np.real(P)
+  
+  offset = 20
+  for (id, (x,y)) in zip(site_ids, zip(X,Y)): 
+    pp.text(x+offset, y+offset, id)
+  pp.scatter(X, Y, label='sites', facecolors='r')
+
+  pp.savefig(fn, dpi=300, bbox_inches='tight')
+  pp.clf()
+
+
+
+def plot_contour(fn, angle, exp_params, sys_params):
+
+  pp.rc('text', usetex=True)
+  pp.rc('font', family='serif')
+  fig = pp.gcf()
+  fig.set_size_inches(9, 8.64)
+  ax = fig.add_subplot(111)
+  ax.axis('equal')
+  ax.set_xlabel('easting (m)')
+  ax.set_ylabel('northing (m)')
+  d = exp_params['half_span'] * exp_params['scale']
+  pp.xlim([exp_params['center'].imag - d, exp_params['center'].imag + d])
+  pp.ylim([exp_params['center'].real - d, exp_params['center'].real + d])
+  s = 2 * exp_params['half_span'] + 1
+  
+  weight = 0.5
+  lweight = 20
+  for e in range(s): #easting 
+    for n in range(s): #northing
+      p = exp_params['center']  + np.complex((n - exp_params['half_span']) * exp_params['scale'], 
+                                             (e - exp_params['half_span']) * exp_params['scale'])
+      dx = np.cos(angle[e,n]) * lweight
+      dy = np.sin(angle[e,n]) * lweight
+      pp.plot([p.imag - dx/2, p.imag + dx/2], 
+              [p.real - dy/2, p.real + dy/2],
+              lw=weight, color='k') 
+ 
+
+  # Plot sites
+  (site_ids, P) = zip(*sys_params['sites'].iteritems())
+  X = np.imag(P)
+  Y = np.real(P)
+  
+  offset = 20
+  for (id, (x,y)) in zip(site_ids, zip(X,Y)): 
+    pp.text(x+offset, y+offset, id)
+  pp.scatter(X, Y, label='sites', facecolors='r', zorder=11)
+
+  pp.savefig(fn, dpi=300, bbox_inches='tight')
+  pp.clf()
+
+
+
 def plot_distribution(fn, exp_params, sys_params, pulse_ct, sig_n, pos, alpha=0.1):
   i = exp_params['pulse_ct'].index(pulse_ct)
   j = exp_params['sig_n'].index(sig_n)
@@ -856,164 +945,6 @@ def grid_test(prefix, center, sites, sv, conf_level):
   pp.clf()
 
 # grid_test()
-
-
-
-def plot_contour(fn, exp_params, sys_params, pulse_ct, sig_n, pos, conf_level):
-  i = exp_params['pulse_ct'].index(pulse_ct)
-  j = exp_params['sig_n'].index(sig_n)
-  Qt = scipy.stats.chi2.ppf(conf_level, 2)
-  
-
-  # Plot positions.
-  angle = np.zeros((s,s), dtype=float)
-  eccentricity = np.zeros((s,s), dtype=float)
-  area = np.zeros((s,s), dtype=float)
-  for e in range(s): #easting 
-    for n in range(s): #northing
-      p = exp_params['center']  + np.complex((n - exp_params['half_span']) * exp_params['scale'], 
-                                             (e - exp_params['half_span']) * exp_params['scale'])
-      p_hat = pos[i,j,e,n,:]
-      C = np.cov(np.imag(p_hat), np.real(p_hat))
-      E = position.Ellipse(p, *position.compute_conf(C, Qt))
-      angle[e,n] = E.angle
-      eccentricity[e,n] = E.axes[1] / E.axes[0]
-      area[e,n] = E.area()
-
-
-  c_norm  = colors.Normalize(vmin=np.min(eccentricity), vmax=np.max(eccentricity))
-  scalar_map = cmx.ScalarMappable(norm=c_norm,cmap='YlGnBu')
- 
-  # Eccentricity
-  for e in range(s):
-    for n in range(s):
-      p = exp_params['center']  + np.complex((n - exp_params['half_span']) * exp_params['scale'], 
-                                             (e - exp_params['half_span']) * exp_params['scale'])
-      b = scalar_map.to_rgba(eccentricity[e,n])
-      pp.scatter(p.imag, p.real, marker='s', color=b, edgecolors='none', s=50, alpha=0.8) 
-
-  # Area, orientation
-  area = area / np.max(area)
-  weight = 0.5
-  lweight = 50
-  for e in range(s): #easting 
-    for n in range(s): #northing
-      p = exp_params['center']  + np.complex((n - exp_params['half_span']) * exp_params['scale'], 
-                                             (e - exp_params['half_span']) * exp_params['scale'])
-      a = area[e,n]
-      dx = np.cos(angle[e,n]) * a * lweight
-      dy = np.sin(angle[e,n]) * a * lweight
-      pp.plot([p.imag - dx/2, p.imag + dx/2], 
-              [p.real - dy/2, p.real + dy/2],
-              lw=weight, color='k') 
-  
-  # Plot sites
-  (site_ids, P) = zip(*sys_params['sites'].iteritems())
-  X = np.imag(P)
-  Y = np.real(P)
-  pp.xlim([np.min(X) - 100, np.max(X) + 100])
-  pp.ylim([np.min(Y) - 100, np.max(Y) + 100])
-  
-  offset = 20
-  for (id, (x,y)) in zip(site_ids, zip(X,Y)): 
-    pp.text(x+offset, y+offset, id)
-  pp.scatter(X, Y, label='sites', facecolors='r')
-
-  #X = np.imag(pos.flat)
-  #Y = np.real(pos.flat)
-  #pp.scatter(X, Y, label='estimates', alpha=0.1, facecolors='b', edgecolors='none', s=5)
-
-  pp.savefig(fn, dpi=600)
-  pp.clf()
-
-def plot_heatmap(fn, data, exp_params, sys_params, thresh=None):
-
-  pp.rc('text', usetex=True)
-  pp.rc('font', family='serif')
-  fig = pp.gcf()
-  fig.set_size_inches(5,4.8)
-  ax = fig.add_subplot(111)
-  ax.axis('equal')
-  ax.set_xlabel('easting (m)')
-  ax.set_ylabel('northing (m)')
-  d = exp_params['half_span'] * exp_params['scale']
-  pp.xlim([exp_params['center'].imag - d, exp_params['center'].imag + d])
-  pp.ylim([exp_params['center'].real - d, exp_params['center'].real + d])
-  s = 2 * exp_params['half_span'] + 1
-  
-  a = data[~np.isnan(data)]
-  print a
-  if thresh:
-    c_norm  = colors.Normalize(vmin=np.min(a), vmax=np.min(a)+thresh)
-  else:
-    c_norm  = colors.Normalize(vmin=np.min(a), vmax=np.max(a))
-  scalar_map = cmx.ScalarMappable(norm=c_norm,cmap='YlGnBu')
-
-  for e in range(s):
-    for n in range(s):
-      p = exp_params['center']  + np.complex((n - exp_params['half_span']) * exp_params['scale'], 
-                                             (e - exp_params['half_span']) * exp_params['scale'])
-      if ~np.isnan(data[e,n]): 
-        b = scalar_map.to_rgba(data[e,n])
-        pp.scatter(p.imag, p.real, marker='s', color=b, edgecolors='none', s=18, alpha=1) 
-  
-  # Plot sites
-  (site_ids, P) = zip(*sys_params['sites'].iteritems())
-  X = np.imag(P)
-  Y = np.real(P)
-  
-  offset = 20
-  for (id, (x,y)) in zip(site_ids, zip(X,Y)): 
-    pp.text(x+offset, y+offset, id)
-  pp.scatter(X, Y, label='sites', facecolors='r')
-
-  pp.savefig(fn, dpi=300, bbox_inches='tight')
-  pp.clf()
-
-
-
-def plot_contour(fn, angle, exp_params, sys_params):
-
-  pp.rc('text', usetex=True)
-  pp.rc('font', family='serif')
-  fig = pp.gcf()
-  fig.set_size_inches(9, 8.64)
-  ax = fig.add_subplot(111)
-  ax.axis('equal')
-  ax.set_xlabel('easting (m)')
-  ax.set_ylabel('northing (m)')
-  d = exp_params['half_span'] * exp_params['scale']
-  pp.xlim([exp_params['center'].imag - d, exp_params['center'].imag + d])
-  pp.ylim([exp_params['center'].real - d, exp_params['center'].real + d])
-  s = 2 * exp_params['half_span'] + 1
-  
-  weight = 0.5
-  lweight = 20
-  for e in range(s): #easting 
-    for n in range(s): #northing
-      p = exp_params['center']  + np.complex((n - exp_params['half_span']) * exp_params['scale'], 
-                                             (e - exp_params['half_span']) * exp_params['scale'])
-      dx = np.cos(angle[e,n]) * lweight
-      dy = np.sin(angle[e,n]) * lweight
-      pp.plot([p.imag - dx/2, p.imag + dx/2], 
-              [p.real - dy/2, p.real + dy/2],
-              lw=weight, color='k') 
- 
-
-  # Plot sites
-  (site_ids, P) = zip(*sys_params['sites'].iteritems())
-  X = np.imag(P)
-  Y = np.real(P)
-  
-  offset = 20
-  for (id, (x,y)) in zip(site_ids, zip(X,Y)): 
-    pp.text(x+offset, y+offset, id)
-  pp.scatter(X, Y, label='sites', facecolors='r', zorder=11)
-
-  pp.savefig(fn, dpi=300, bbox_inches='tight')
-  pp.clf()
-
-
 
 
 def contour_test(prefix, center, sites, sv, conf_level): 
