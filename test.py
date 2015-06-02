@@ -78,7 +78,24 @@ def sim_data():
   #position.Covariance(pos, sites, p_known=p).conf(level).display(p)
 
 
+def bm():
+  
+  p = center + complex(650,0)
+  include = [2,4,6,8]
+
+  sig_n = 0.002 # noise
+  rho = signal.scale_tx_coeff(p, 1, sites, include)
+  sv_splines = signal.compute_bearing_splines(sv)
+
+  for i in range(100):
+    sig = signal.Simulator(p, sites, sv_splines, rho, sig_n, 10, include)
+    pos = position.PositionEstimator(sig, sites, center, 
+                               sv, method=signal.Signal.Bartlet)
+    cov = position.BootstrapCovariance(pos, sites)
+
+
 # Testing, testing .... 
-sim_data()
+bm()
+#sim_data()
 #real_data()
 #read_db()
