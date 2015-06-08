@@ -19,7 +19,6 @@ JOBS = 2 # Number of processes to spawn in montecarlo_huge()
 
 POS_EXT_FMT = '-%02d.%02d'
 
-# Constraint: (delta * s)^m = 1500. m=2, n=-1, delta=10, s=150.
 POS_EST_M = 3
 POS_EST_N = -1
 POS_EST_DELTA = 5
@@ -54,6 +53,49 @@ def create_array_from_shape(shape):
                       for i in range(shape[0]) ]
 
 def montecarlo(exp_params, sys_params, sv, nearest=None, max_dist=None, compute_cov=True, scale_tx_pwr=True):
+  ''' Run simulations over a grid of points for various sample sizes and noise regimes.
+    
+    Inputs: 
+  
+      exp_params -- a dictionary specifying the experiments. 
+                         { 'rho'       : real number, transmitter power
+                           'sig_n'     : list of reals, the noise regime
+                           'pulse_ct'  : list of integers, number of samples per site
+                           'center'    : complex, representing the center of the grid
+                           'half_span' : integer, number of positions spanning half of hte 
+                                         side of a grid. Number of grid points: (2*half_span + 1)**2.
+                           'scale'     : real, distance in meters between grid points
+                           'trials'    : integer, number of trials per position, noise, and sample size.  }
+                 
+      sys_params -- a dicitionary specifying the system paramters. 
+                         { 'method'  : 'bartlet' or 'mle', algorithm for bearing spectrum
+                           'sites'   : siteID -> complex dict, positions of sites. 
+                           'include' : list of siteIDs, subset of sites.keys() to use for estimates. 
+                                       if sys_params['include'] == [], then include all sit4es in 
+                                       sites.keys(). 
+                           'center'  : complex, initial guess for position estimator }
+
+      sv -- instance of `signal.SteeringVectors`. 
+
+      nearest -- interger, use this number of nearest sites to the position for simulation
+
+      max_dist -- real, use all sites within this distance (in meters) for simulation
+
+      compute_cov -- Do asymptotic and bootstrap covaraince estimation (position.Covariance and 
+                     position.BootstrapCovariance resp.)
+
+      scale_tx_pwr -- Scale transmitter power using signal.scale_tx_coeff() method. 
+
+    Returns (pos, (cov_asym, cov_boot)), where pos, cov_asym, and cov_boot are multidimensional arrays
+    with the first dimension indexing over pulse_ct, the second over sig_n, the third over easting of 
+    the grid, the fourth over northing, and the fifth over the independent trials. 
+    
+    The elements of pos are np.complex()'s, the elements of cov_asym and cov_boot are 
+    position.Covariance and position.BootstrapCovariance instances respictively. 
+
+    If compute_cov == False, then cov_asym = None and cov_boot = None
+  '''
+  
   s = 2 * exp_params['half_span'] + 1
   shape = (len(exp_params['pulse_ct']), len(exp_params['sig_n']), s, s, exp_params['trials'])
   pos = np.zeros(shape, dtype=np.complex)
@@ -110,10 +152,6 @@ def montecarlo(exp_params, sys_params, sv, nearest=None, max_dist=None, compute_
             # Run simulation.
             sig = signal.Simulator(P, sites, sv_splines, scaled_rho, sig_n, pulse_ct, include)
           
-            # Estimate position.
-            # NOTE For convergence test use `sys_params['center']` for initial guess 
-            # instead of `P`. The true position is used here to assure convergence to 
-            # the global maximum. 
             P_hat = position.PositionEstimator(sig, sites, P, sv, method, 
                              s=POS_EST_S, m=POS_EST_M, n=POS_EST_N, delta=POS_EST_DELTA)
             pos[i,j,e,n,k] = P_hat.p
@@ -130,6 +168,16 @@ def montecarlo(exp_params, sys_params, sv, nearest=None, max_dist=None, compute_
 
 
 def montecarlo_huge(prefix, exp_params, sys_params, sv, nearest=None, compute_cov=True):
+  ''' Variant of montecarlo() for huge data sets. 
+  
+    Intermediate results per position are stored to disk; no results are returend. 
+    This code spawns a number of processes and divides the set of positions to simulate
+    among them. It is also designed to be interruptable. It searches for inteermediate
+    results stored on disk and doesn't recompute these.
+
+    Inputs: 
+      prefix -- the begining of file names. 
+  '''
   s = 2 * exp_params['half_span'] + 1
   shape = (len(exp_params['pulse_ct']), len(exp_params['sig_n']), exp_params['trials'])
 
@@ -224,61 +272,32 @@ def _montecarlo_huge(prefix, exp_params, sys_params, sv, nearest, compute_cov,
     save(prefix, pos, (cov_asym, cov_boot), 
       exp_params, sys_params, add=POS_EXT_FMT % (e, n))
 
-
-def montecarlo_spectrum(exp_params, sys_params, sv):
-  ''' MLE / Bartlet. ''' 
-  s = 2 * exp_params['half_span'] + 1
-  shape = (len(exp_params['pulse_ct']), len(exp_params['sig_n']), s, s, exp_params['trials'])
-  pos_bartlet = np.zeros(shape, dtype=np.complex)
-  pos_mle = np.zeros(shape, dtype=np.complex)
-
-  sites = sys_params['sites']
-  include = sys_params['include']
-  
-  # Fix transmission power. 
-  scaled_rho = signal.scale_tx_coeff(exp_params['center'], 
-                                      exp_params['rho'],
-                                      sites,
-                                      sys_params['include'])
-
-  # Interpolate steering vector splines.
-  sv_splines = signal.compute_bearing_splines(sv)
-
-  for i, pulse_ct in enumerate(exp_params['pulse_ct']): 
-    print 'pulse_ct=%d' % pulse_ct
-    for j, sig_n in enumerate(exp_params['sig_n']): 
-      print '  sig_n=%f' % sig_n
-      for e in range(s): #easting 
-        print e, '|',
-        for n in range(s): #northing
-          P = exp_params['center']  + np.complex((n - exp_params['half_span']) * exp_params['scale'], 
-                                                 (e - exp_params['half_span']) * exp_params['scale'])
-          for k in range(exp_params['trials']): 
-            # Run simulation.
-            sig = signal.Simulator(P, sites, sv_splines, scaled_rho, sig_n, pulse_ct, include)
-          
-            # Estimate position.
-            A = position.PositionEstimator(sig, sites, P, sv, signal.Signal.Bartlet, 
-                             s=POS_EST_S, m=POS_EST_M, n=POS_EST_N, delta=POS_EST_DELTA)
-            pos_bartlet[i,j,e,n,k] = A.p
-            B = position.PositionEstimator(sig, sites, P, sv, signal.Signal.MLE, 
-                             s=POS_EST_S, m=POS_EST_M, n=POS_EST_N, delta=POS_EST_DELTA)
-            pos_mle[i,j,e,n,k] = B.p
-          print n,
-        print
-  return (pos_bartlet, pos_mle)
-
+# montecarlo_huge()
 
 
 ### SAVE RESULTS ##############################################################
 
 def save(prefix, pos, cov, exp_params, sys_params, add=''):
+  ''' Save intermediate results. 
+    
+    Class instances are pickled; the positions are stored in 
+    Numpy zip file thingies. 
+
+    Inputs:
+      
+      pos -- as outputted by montecarlo(). 
+
+      cov -- cov[0] corresponds to cov_asym, cov[1] to cov_boot.
+
+      exp_params, sys_params -- these are also stored. 
+  '''
   np.savez(prefix+add + '-pos', pos)
   pickle.dump(cov[0], open(prefix+add + '-cov0', 'w'))
   pickle.dump(cov[1], open(prefix+add + '-cov1', 'w'))
   pickle.dump((exp_params, sys_params), open(prefix + '-params', 'w'))
 
 def load(prefix, add=''):
+  ''' Load results from disk. ''' 
   pos = np.load(prefix+add + '-pos.npz')['arr_0']
   cov0 = pickle.load(open(prefix+add + '-cov0', 'r'))
   cov1 = pickle.load(open(prefix+add + '-cov1', 'r'))
@@ -286,6 +305,7 @@ def load(prefix, add=''):
   return (pos, (cov0, cov1), exp_params, sys_params)
  
 def load_grid(prefix, exp_params, sys_params): 
+  ''' Load the position estimates generated by montecarlo_huge(). ''' 
   s = 2 * exp_params['half_span'] + 1
   shape = (len(exp_params['pulse_ct']), len(exp_params['sig_n']), s, s, exp_params['trials'])
   pos = np.zeros(shape, dtype=np.complex)
@@ -299,6 +319,15 @@ def load_grid(prefix, exp_params, sys_params):
 ### SUMARIZE RESULTS ##########################################################
 
 def generate_report(pos, cov, exp_params, sys_params, conf_level, offset=True):
+  ''' Aggregate statistics of simulations. 
+  
+    Inputs: 
+
+      pos -- A grid of position estimates, elements of type np.complex. 
+
+      cov -- A grid of covariance estimates, elements either 
+             position.Covariance or position.BootstrapCovariance
+  ''' 
   
   # Results
   res = { 'cvg_prob' : np.zeros(pos.shape[:-1], dtype=np.float),
@@ -390,6 +419,7 @@ def generate_report(pos, cov, exp_params, sys_params, conf_level, offset=True):
 
 
 def display_report(res, exp_params, sys_params, compute_cov=True, offset=True):  
+  ''' Print output of generate_report(). ''' 
   fmt = lambda x : '%9s' % ('%0.2f' % x)
   print 'SITES =', sys_params['include'], 'TRIALS = %d' % exp_params['trials']
   s = res['rmse'].shape[2]
@@ -723,29 +753,266 @@ def plot_area(fn, pos, p, exp_params, sys_params, conf_level, cov=None):
 ### EXPERIMENTS ###############################################################
 
 
-def conf_test(prefix, center, sites, sv, conf_level): 
-  
-  position.NORMALIZE_SPECTRUM = True
+def one_test(db_con, prefix, conf_level):
+ 
+  ''' Idealized receivers, ideal geometry -- figure 7. ''' 
+
+  cal_id = 6
+  sv = signal.SteeringVectors(db_con, cal_id, include=[0])
+  sv.steering_vectors[1] = sv.steering_vectors[0]
+  sv.bearings[1] = sv.bearings[0]
+  sv.sv_id[1] = sv.sv_id[0]
+
+  sites = { 0 : (0+100j), 
+            1 : (100+0j) } 
+
   exp_params = { 'rho'       : 1,
-                 'sig_n'     : [0.01],
-                 'pulse_ct'  : [6],
-                 'center'    : (4260738.3+574549j), 
+                 'sig_n'     : [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1],
+                 'pulse_ct'  : [1,2,3,4,5,6,7,8,9,10],
+                 'center'    : (0+0j), 
                  'half_span' : 0,
                  'scale'     : 1,
+                 'trials'    : 10000 }
+                 
+
+  sys_params = { 'method'  : 'bartlet', 
+                 'include' : [],
+                 'sites'   : sites.copy() } 
+  
+  # Run simulations, save results
+  (pos, cov) = montecarlo(exp_params, sys_params, sv, compute_cov=False)
+  save(prefix, pos, cov, exp_params, sys_params)
+  
+  # Plot results
+  (pos, _, exp_params, sys_params) = load(prefix)
+  plot_rmse('rmse.png', pos, exp_params['center'], exp_params, sys_params)
+  plot_area('area.png', pos, exp_params['center'], exp_params, sys_params, 0.95)
+  plot_grid('noise-sample-ill.png', exp_params, sys_params, 5, 0.1, pos)
+
+# one_test()
+
+
+def distance_test(db_con, prefix, center, conf_level):
+
+  ''' Idealized receivers, varying distance -- figure 8. ''' 
+
+  cal_id = 6
+  sv = signal.SteeringVectors(db_con, cal_id, include=[0])
+  sv.steering_vectors[1] = sv.steering_vectors[0]
+  sv.bearings[1] = sv.bearings[0]
+  sv.sv_id[1] = sv.sv_id[0]
+
+  sites = { 0 : (0+100j), 
+            1 : (100+0j) } 
+
+  exp_params = { 'rho'       : 1,
+                 'sig_n'     : [0.005],
+                 'pulse_ct'  : [5],
+                 'center'    : (0+0j), 
+                 'half_span' : 0,
+                 'scale'     : 1,
+                 'trials'    : 10000 }
+                 
+
+  sys_params = { 'method'  : 'bartlet', 
+                 'include' : [],
+                 'center'  : center,
+                 'sites'   : sites.copy() } 
+  
+  pos = [] # Sequence of position estimates for varying distance. 
+  step = 5 # distance in meters to move site 1. 
+  
+  for i in range(50):
+    
+    # Run simulations. 
+    (P, cov) = montecarlo(exp_params, sys_params, sv, compute_cov=False)
+    save(prefix + str(i), P, cov, exp_params, sys_params)
+    
+    # Load results. 
+    (P, _, exp_params, sys_params) = load(prefix + str(i))
+    sys_params['sites'][1] += step
+    pos.append(P) 
+  sys_params['sites'] = sites
+
+  # Plot results. 
+  plot_distance('dist.png', pos, exp_params, sys_params, 
+      exp_params['pulse_ct'][0], exp_params['sig_n'][0], conf_level, step)
+  plot_distribution('dist-ill.png', exp_params, sys_params, 
+    exp_params['pulse_ct'][0], exp_params['sig_n'][0], pos[20], alpha=0.1)
+      
+
+def angular_test(db_con, prefix, center, conf_level):
+ 
+  ''' Idealized receivers, varying angle -- figure 8. ''' 
+
+  cal_id = 6
+  sv = signal.SteeringVectors(db_con, cal_id, include=[0])
+  sv.steering_vectors[1] = sv.steering_vectors[0]
+  sv.bearings[1] = sv.bearings[0]
+  sv.sv_id[1] = sv.sv_id[0]
+
+  sites = { 0 : (0+100j), 
+            1 : (0-100j) } 
+
+  exp_params = { 'rho'       : 1,
+                 'sig_n'     : [0.005],
+                 'pulse_ct'  : [5],
+                 'center'    : (0+0j), 
+                 'half_span' : 0,
+                 'scale'     : 1,
+                 'trials'    : 10000 }
+                 
+  sys_params = { 'method'  : 'bartlet', 
+                 'include' : [],
+                 'center'  : center,
+                 'sites'   : sites.copy() } 
+  step = 40 # Number of increments
+  # NOTE if `step` is too large than the position estimator won't 
+  # converge on extreme angleso!
+  p = np.array([sys_params['sites'][0].imag, 
+                sys_params['sites'][0].real]) 
+  c = np.array([exp_params['center'].imag, 
+                exp_params['center'].real])
+  
+  pos = []; site2_pos = []
+  for i in range(step-1):
+    theta = (np.pi * (i+1)) / step
+    A = np.array([[  np.cos(theta), np.sin(theta) ], 
+                  [ -np.sin(theta), np.cos(theta) ]])
+    b = np.dot(A, p-c) + c
+    site2_pos.append(b)
+    sys_params['sites'][1] = np.complex(b[1], b[0])
+    
+    # Run Simulations
+    (P, cov) = montecarlo(exp_params, sys_params, sv, compute_cov=False)
+    save(prefix + str(i), P, cov, exp_params, sys_params)
+    
+    # Load results
+    (P, cov, exp_params, sys_params) = load(prefix + str(i))
+    pos.append(P)
+  site2_pos = np.vstack(site2_pos)
+
+  plot_angular('angle.png', pos, site2_pos, exp_params, sys_params, 
+                exp_params['pulse_ct'][0], exp_params['sig_n'][0], conf_level, step)
+  plot_distribution('angle-ill.png', exp_params, sys_params, 
+    exp_params['pulse_ct'][0], exp_params['sig_n'][0], pos[30], alpha=0.1)
+
+
+def grid_test(prefix, center, sites, sv, conf_level):
+
+  ''' Performance of covariance estimates, figures 10 and 11. ''' 
+  
+  exp_params = { 'rho'       : 1,
+                 'sig_n'     : [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1],
+                 'pulse_ct'  : [2,4,6,8,10],
+                 'center'    : (4260738.3+574549j), 
+                 'half_span' : 2,
+                 'scale'     : 350,
                  'trials'    : 1000 }
 
-  sys_params = { 'method'         : 'mle', 
-                 'include'        : [],
-                 'center'         : center,
-                 'sites'          : sites } 
+  sys_params = { 'method'  : 'bartlet', 
+                 'include' : [],
+                 'center'  : center,
+                 'sites'   : sites } 
 
-  (pos, cov) = montecarlo(exp_params, sys_params, sv, nearest=3, compute_cov=True)
-  res = generate_report(pos, cov[1], exp_params, sys_params, conf_level)
-  display_report(res, exp_params, sys_params)  
+  # Run simulations.
+  montecarlo_huge(prefix, exp_params, sys_params, 
+                              sv, compute_cov=True, nearest=3)
+  
+  # Load and plot grid. (figure 10)
+  pos = load_grid(prefix, exp_params, sys_params)
+  plot_grid('grid.png', exp_params, sys_params, 6, 0.005, pos, nearest=3)
+  
+  # Generate and save summary statistics.
+  s = 2 * exp_params['half_span'] + 1
+  shape = (len(exp_params['pulse_ct']), len(exp_params['sig_n']), s, s)
+  asym_res = { 'cvg_prob' : np.zeros(shape, dtype=np.float),
+               'mean' : np.zeros(shape, dtype=np.complex),
+               'rmse' : np.zeros(shape, dtype=np.float),
+               'area' : np.zeros(shape, dtype=np.float),
+               'ecc' : np.zeros(shape, dtype=np.float),
+               'avg_area' : np.zeros(shape, dtype=np.float),
+               'avg_ecc' : np.zeros(shape, dtype=np.float),
+               'area_ratio' : np.zeros(shape, dtype=np.float) }
+  boot_res = copy.deepcopy(asym_res)
+  center = exp_params['center']
+  s = 2 * exp_params['half_span'] + 1
+  shape = (len(exp_params['pulse_ct']), len(exp_params['sig_n']), 1, 1, exp_params['trials'])
+  for e in range(s):
+    for n in range(s):
+      print e,n
+      (P, cov, _, _) = load(prefix, add=POS_EXT_FMT % (e,n))
+      pos = np.zeros(shape, dtype=np.complex)
+      pos[:,:,0,0,:] = P
+      cov_asym = create_array_from_shape(shape)
+      cov_boot = create_array_from_shape(shape)
+      for i in range(shape[0]): 
+        for j in range(shape[1]):
+          cov_asym[i][j][0][0] = cov[0][i][j]
+          cov_boot[i][j][0][0] = cov[1][i][j]
+      p = center + np.complex((n - exp_params['half_span']) * exp_params['scale'], 
+                              (e - exp_params['half_span']) * exp_params['scale'])
+      exp_params['center'] = p
+      asym = generate_report(pos, cov_asym, exp_params, sys_params, conf_level, offset=False)
+      boot = generate_report(pos, cov_boot, exp_params, sys_params, conf_level, offset=False)
+      for key in asym_res.keys():
+        asym_res[key][:,:,e,n] = asym[key][:,:,0,0]
+        boot_res[key][:,:,e,n] = boot[key][:,:,0,0]
+  exp_params['center'] = center
+  pickle.dump((asym_res, boot_res), open(prefix + '-stats', 'w'))
+
+  # Plot summary statistics. (figure 11)
+  (asym_res, boot_res) = pickle.load(open(prefix + '-stats'))
+  I = len(exp_params['pulse_ct'])
+  J = len(exp_params['sig_n'])
+
+  feature = 'cvg_prob'
+  title = 'Coverage probability'
+  mean = np.zeros((2,I,J), dtype=np.float)
+  std  = np.zeros((2,I,J), dtype=np.float)
+  for i in range(I): 
+    for j in range(J): 
+      A = asym_res[feature][i,j].flat[~np.isnan(asym_res[feature][i,j].flat)]
+      mean[0,i,j] = np.mean(A)
+      std[0,i,j] =  np.std(A)
+      B = boot_res[feature][i,j].flat[~np.isnan(boot_res[feature][i,j].flat)]
+      mean[1,i,j] = np.mean(B)
+      std[1,i,j] =  np.std(B)
+  
+  pp.rc('text', usetex=True)
+  pp.rc('font', family='serif')
+  fig, axs = pp.subplots(nrows=1, ncols=2, sharex=True)
+  fig.set_size_inches(10,3.5)
+  ax0 = axs[0]
+  ax0.set_xscale('log')
+  ax0.set_xlim([exp_params['sig_n'][0]/2, exp_params['sig_n'][-1]*2])
+  ax0.set_xlabel('$\sigma_n^2$')
+  ax0.set_ylabel('Coverage probability')
+  ax0.set_title('Asymptotic')
+  ax1 = axs[1]
+  ax1.set_xscale('log')
+  ax1.set_title('Bootstrap')
+  ax1.set_xlim([exp_params['sig_n'][0]/2, exp_params['sig_n'][-1]*2])
+  ax1.set_xlabel('$\sigma_n^2$')
+  
+  for i, pulse_ct in enumerate(exp_params['pulse_ct']):
+    ax0.errorbar(exp_params['sig_n'], mean[0,i,:], yerr=std[0,i,:], 
+      fmt='o', label='%d' % pulse_ct)
+    ax1.errorbar(exp_params['sig_n'], mean[1,i,:], yerr=std[1,i,:], 
+      fmt='o', label='%d' % pulse_ct)
+    
+  pp.legend(title='Samples per site', ncol=1, bbox_to_anchor=(1.05,1), loc=2, borderaxespad=0)
+  pp.savefig('cvg_prob.png', dpi=300, bbox_inches='tight')
+  pp.clf()
+
+# grid_test()
+
 
 
 def asym_test(prefix, center, sites, sv, conf_level): 
-  
+
+  ''' Test of asymptotic covariance in the large sample limit, figure 12. ''' 
+
   exp_params = { 'rho'       : 1,
                  'sig_n'     : [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1],
                  'pulse_ct'  : [10,20,50,100],
@@ -839,118 +1106,13 @@ def asym_test(prefix, center, sites, sv, conf_level):
 # asym_test()
 
 
-def grid_test(prefix, center, sites, sv, conf_level): 
-  
-  exp_params = { 'rho'       : 1,
-                 'sig_n'     : [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1],
-                 'pulse_ct'  : [2,4,6,8,10],
-                 'center'    : (4260738.3+574549j), 
-                 'half_span' : 2,
-                 'scale'     : 350,
-                 'trials'    : 1000 }
-
-  sys_params = { 'method'  : 'bartlet', 
-                 'include' : [],
-                 'center'  : center,
-                 'sites'   : sites } 
-
-  # Run simulations.
-  montecarlo_huge(prefix, exp_params, sys_params, 
-                              sv, compute_cov=True, nearest=3)
-  
-  # Load and plot grid. 
-  pos = load_grid(prefix, exp_params, sys_params)
-  plot_grid('grid.png', exp_params, sys_params, 6, 0.005, pos, nearest=3)
-  
-  # Save summary statistics.
-  s = 2 * exp_params['half_span'] + 1
-  shape = (len(exp_params['pulse_ct']), len(exp_params['sig_n']), s, s)
-  asym_res = { 'cvg_prob' : np.zeros(shape, dtype=np.float),
-               'mean' : np.zeros(shape, dtype=np.complex),
-               'rmse' : np.zeros(shape, dtype=np.float),
-               'area' : np.zeros(shape, dtype=np.float),
-               'ecc' : np.zeros(shape, dtype=np.float),
-               'avg_area' : np.zeros(shape, dtype=np.float),
-               'avg_ecc' : np.zeros(shape, dtype=np.float),
-               'area_ratio' : np.zeros(shape, dtype=np.float) }
-  boot_res = copy.deepcopy(asym_res)
-  center = exp_params['center']
-  s = 2 * exp_params['half_span'] + 1
-  shape = (len(exp_params['pulse_ct']), len(exp_params['sig_n']), 1, 1, exp_params['trials'])
-  for e in range(s):
-    for n in range(s):
-      print e,n
-      (P, cov, _, _) = load(prefix, add=POS_EXT_FMT % (e,n))
-      pos = np.zeros(shape, dtype=np.complex)
-      pos[:,:,0,0,:] = P
-      cov_asym = create_array_from_shape(shape)
-      cov_boot = create_array_from_shape(shape)
-      for i in range(shape[0]): 
-        for j in range(shape[1]):
-          cov_asym[i][j][0][0] = cov[0][i][j]
-          cov_boot[i][j][0][0] = cov[1][i][j]
-      p = center + np.complex((n - exp_params['half_span']) * exp_params['scale'], 
-                              (e - exp_params['half_span']) * exp_params['scale'])
-      exp_params['center'] = p
-      asym = generate_report(pos, cov_asym, exp_params, sys_params, conf_level, offset=False)
-      boot = generate_report(pos, cov_boot, exp_params, sys_params, conf_level, offset=False)
-      for key in asym_res.keys():
-        asym_res[key][:,:,e,n] = asym[key][:,:,0,0]
-        boot_res[key][:,:,e,n] = boot[key][:,:,0,0]
-  exp_params['center'] = center
-  pickle.dump((asym_res, boot_res), open(prefix + '-stats', 'w'))
-
-  # Plot summary statistics.
-  (asym_res, boot_res) = pickle.load(open(prefix + '-stats'))
-  I = len(exp_params['pulse_ct'])
-  J = len(exp_params['sig_n'])
-
-  feature = 'cvg_prob'
-  title = 'Coverage probability'
-  mean = np.zeros((2,I,J), dtype=np.float)
-  std  = np.zeros((2,I,J), dtype=np.float)
-  for i in range(I): 
-    for j in range(J): 
-      A = asym_res[feature][i,j].flat[~np.isnan(asym_res[feature][i,j].flat)]
-      mean[0,i,j] = np.mean(A)
-      std[0,i,j] =  np.std(A)
-      B = boot_res[feature][i,j].flat[~np.isnan(boot_res[feature][i,j].flat)]
-      mean[1,i,j] = np.mean(B)
-      std[1,i,j] =  np.std(B)
-  
-  pp.rc('text', usetex=True)
-  pp.rc('font', family='serif')
-  fig, axs = pp.subplots(nrows=1, ncols=2, sharex=True)
-  fig.set_size_inches(10,3.5)
-  ax0 = axs[0]
-  ax0.set_xscale('log')
-  ax0.set_xlim([exp_params['sig_n'][0]/2, exp_params['sig_n'][-1]*2])
-  ax0.set_xlabel('$\sigma_n^2$')
-  ax0.set_ylabel('Coverage probability')
-  ax0.set_title('Asymptotic')
-  ax1 = axs[1]
-  ax1.set_xscale('log')
-  ax1.set_title('Bootstrap')
-  ax1.set_xlim([exp_params['sig_n'][0]/2, exp_params['sig_n'][-1]*2])
-  ax1.set_xlabel('$\sigma_n^2$')
-  
-  for i, pulse_ct in enumerate(exp_params['pulse_ct']):
-    ax0.errorbar(exp_params['sig_n'], mean[0,i,:], yerr=std[0,i,:], 
-      fmt='o', label='%d' % pulse_ct)
-    ax1.errorbar(exp_params['sig_n'], mean[1,i,:], yerr=std[1,i,:], 
-      fmt='o', label='%d' % pulse_ct)
-    
-  pp.legend(title='Samples per site', ncol=1, bbox_to_anchor=(1.05,1), loc=2, borderaxespad=0)
-  pp.savefig('cvg_prob.png', dpi=300, bbox_inches='tight')
-  pp.clf()
-
-# grid_test()
-
 
 def contour_test(prefix, center, sites, sv, conf_level): 
   
+  ''' Contour test, figure 13. ''' 
+
   exp_params = { 'rho'       : 74101.39, # Scaled so that contour_test() and grid_test() are comparable. 
-                 'sig_n'     : None, 
+                 'sig_n'     : None,    
                  'pulse_ct'  : [5],
                  'center'    : (4260738.3+574549j), 
                  'half_span' : 50,
@@ -962,6 +1124,7 @@ def contour_test(prefix, center, sites, sv, conf_level):
                  'center'  : center,
                  'sites'   : sites } 
 
+  # exp_params['sig_n'] is None -- save results for different noise regimes separately. 
   noise = [0.001, 0.01, 0.1]
 
   # show the number of sites visible from each site.   
@@ -1020,180 +1183,6 @@ def _contour_test(prefix, exp_params, sys_params, sv, sig_n):
   save(prefix+('-%0.3f' % sig_n), pos, cov, exp_params, sys_params)
 
 # contour_test()
-
-
-def convergence_test(prefix, center, sites, sv, conf_level): 
-    
-  exp_params = { 'rho'       : 1,
-                 'sig_n'     : [0.001],
-                 'pulse_ct'  : [10],
-                 #'center'    : 4260738.3+575199j + 0-50j,
-                 'center'    : (4260738.3+574549j), 
-                 'half_span' : 6,
-                 'scale'     : 150,
-                 'trials'    : 10 }
-
-  sys_params = { 'method'         : 'bartlet', 
-                 'include'        : [],
-                 'center'         : center,
-                 'sites'          : sites } 
-
-  (pos, cov) = montecarlo(exp_params, sys_params, sv, max_dist=1000, compute_cov=False)
-  plot_grid('convergence.png', exp_params, sys_params, 10, 0.001, pos)
-
-
-def one_test(db_con, prefix, conf_level):
-  
-  cal_id = 6
-  sv = signal.SteeringVectors(db_con, cal_id, include=[0])
-  sv.steering_vectors[1] = sv.steering_vectors[0]
-  sv.bearings[1] = sv.bearings[0]
-  sv.sv_id[1] = sv.sv_id[0]
-
-  sites = { 0 : (0+100j), 
-            1 : (100+0j) } 
-
-  exp_params = { 'rho'       : 1,
-                 'sig_n'     : [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1],
-                 'pulse_ct'  : [1,2,3,4,5,6,7,8,9,10],
-                 'center'    : (0+0j), 
-                 'half_span' : 0,
-                 'scale'     : 1,
-                 'trials'    : 10000 }
-                 
-
-  sys_params = { 'method'  : 'bartlet', 
-                 'include' : [],
-                 'sites'   : sites.copy() } 
-  
-  #(pos, cov) = montecarlo(exp_params, sys_params, sv, compute_cov=False)
-  #save(prefix, pos, cov, exp_params, sys_params)
-  (pos, _, exp_params, sys_params) = load(prefix)
-  #plot_rmse('rmse.png', pos, exp_params['center'], exp_params, sys_params)
-  #plot_area('area.png', pos, exp_params['center'], exp_params, sys_params, 0.95)
-  plot_grid('noise-sample-ill.png', exp_params, sys_params, 5, 0.1, pos)
-  #report(pos, None, exp_params, sys_params, conf_level)
-
-
-def spectrum_test(db_con, prefix, center, conf_level): 
-  
-  cal_id = 6
-  sv = signal.SteeringVectors(db_con, cal_id, include=[0])
-  sv.steering_vectors[1] = sv.steering_vectors[0]
-  sv.bearings[1] = sv.bearings[0]
-  sv.sv_id[1] = sv.sv_id[0]
-  
-  sites = { 0 : (0+100j), 
-            1 : (200+50j) } 
-
-  exp_params = { 'rho'       : 1,
-                 'sig_n'     : [0.5],
-                 'pulse_ct'  : [5],
-                 'center'    : (0+0j), 
-                 'half_span' : 0,
-                 'scale'     : 1,
-                 'trials'    : 10 }
-
-  sys_params = { 'include'        : [],
-                 'sites'          : sites } 
-
-  (pos_bartlet, pos_mle) = montecarlo_spectrum(exp_params, sys_params, sv)
-  plot_grid('pos_bartlet.png', exp_params, sys_params, 
-    exp_params['pulse_ct'][0], exp_params['sig_n'][0], pos_bartlet, alpha=1)
-  plot_grid('pos_mle.png', exp_params, sys_params, 
-    exp_params['pulse_ct'][0], exp_params['sig_n'][0], pos_mle, alpha=1)
-
-
-def distance_test(db_con, prefix, center, conf_level):
-  
-  cal_id = 6
-  sv = signal.SteeringVectors(db_con, cal_id, include=[0])
-  sv.steering_vectors[1] = sv.steering_vectors[0]
-  sv.bearings[1] = sv.bearings[0]
-  sv.sv_id[1] = sv.sv_id[0]
-
-  sites = { 0 : (0+100j), 
-            1 : (100+0j) } 
-
-  exp_params = { 'rho'       : 1,
-                 'sig_n'     : [0.005],
-                 'pulse_ct'  : [5],
-                 'center'    : (0+0j), 
-                 'half_span' : 0,
-                 'scale'     : 1,
-                 'trials'    : 10000 }
-                 
-
-  sys_params = { 'method'  : 'bartlet', 
-                 'include' : [],
-                 'center'  : center,
-                 'sites'   : sites.copy() } 
-  
-  pos = []
-  step = 5
-  for i in range(50):
-    #(P, cov) = montecarlo(exp_params, sys_params, sv, compute_cov=False)
-    #save(prefix + str(i), P, cov, exp_params, sys_params)
-    (P, _, exp_params, sys_params) = load(prefix + str(i))
-    sys_params['sites'][1] += step
-    pos.append(P) 
-  sys_params['sites'] = sites
-  plot_distance('dist.png', pos, exp_params, sys_params, 
-      exp_params['pulse_ct'][0], exp_params['sig_n'][0], conf_level, step)
-  plot_distribution('dist-ill.png', exp_params, sys_params, 
-    exp_params['pulse_ct'][0], exp_params['sig_n'][0], pos[20], alpha=0.1)
-      
-
-def angular_test(db_con, prefix, center, conf_level):
-  
-  cal_id = 6
-  sv = signal.SteeringVectors(db_con, cal_id, include=[0])
-  sv.steering_vectors[1] = sv.steering_vectors[0]
-  sv.bearings[1] = sv.bearings[0]
-  sv.sv_id[1] = sv.sv_id[0]
-
-  sites = { 0 : (0+100j), 
-            1 : (0-100j) } 
-
-  exp_params = { 'rho'       : 1,
-                 'sig_n'     : [0.005],
-                 'pulse_ct'  : [5],
-                 'center'    : (0+0j), 
-                 'half_span' : 0,
-                 'scale'     : 1,
-                 'trials'    : 10000 }
-                 
-  sys_params = { 'method'  : 'bartlet', 
-                 'include' : [],
-                 'center'  : center,
-                 'sites'   : sites.copy() } 
-  step = 40
-  # NOTE if `step` is too large than the position estimator won't 
-  # converge on extreme angles!
-  p = np.array([sys_params['sites'][0].imag, 
-                sys_params['sites'][0].real]) 
-  c = np.array([exp_params['center'].imag, 
-                exp_params['center'].real])
-  
-  pos = []; site2_pos = []
-  for i in range(step-1):
-    theta = (np.pi * (i+1)) / step
-    A = np.array([[  np.cos(theta), np.sin(theta) ], 
-                  [ -np.sin(theta), np.cos(theta) ]])
-    b = np.dot(A, p-c) + c
-    site2_pos.append(b)
-    sys_params['sites'][1] = np.complex(b[1], b[0])
-    #(P, cov) = montecarlo(exp_params, sys_params, sv, compute_cov=False)
-    #save(prefix + str(i), P, cov, exp_params, sys_params)
-    (P, cov, exp_params, sys_params) = load(prefix + str(i))
-    pos.append(P)
-  site2_pos = np.vstack(site2_pos)
-
-  plot_angular('angle.png', pos, site2_pos, exp_params, sys_params, 
-                exp_params['pulse_ct'][0], exp_params['sig_n'][0], conf_level, step)
-  plot_distribution('angle-ill.png', exp_params, sys_params, 
-    exp_params['pulse_ct'][0], exp_params['sig_n'][0], pos[30], alpha=0.1)
-
  
 
 ### Testing, testing ... ######################################################
@@ -1206,13 +1195,8 @@ if __name__ == '__main__':
   sites = util.get_sites(db_con)
   (center, zone) = util.get_center(db_con)
 
-  #conf_test('exp/test', center, sites, sv, 0.95)
-
   #### ONE ###################################################################
   #one_test(db_con, 'exp/one', 0.95)
-
-  #### SPECTRUM ##############################################################
-  #spectrum_test(db_con, 'exp/spectrum', center, 0.95)
 
   #### DISTANCE ###############################################################
   #distance_test(db_con, 'exp/dist', center, 0.95)
@@ -1224,7 +1208,7 @@ if __name__ == '__main__':
   #grid_test('exp/grid', center, sites, sv, 0.95)
 
   #### CONTOUR ################################################################
-  contour_test('exp/contour', center, sites, sv, 0.95)
+  #contour_test('exp/contour', center, sites, sv, 0.95)
   
-  #### ASYMPTOTIC-CONF#########################################################
+  #### ASYMPTOTIC-CONF ########################################################
   #asym_test('exp/asym', center, sites, sv, 0.95)
